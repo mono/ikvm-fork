@@ -281,6 +281,7 @@ public final class FileDescriptor
 	try
 	{
 	    if(false) throw new cli.System.IO.IOException();
+	    stream.Flush();
 	    return stream.ReadByte();
 	}
 	catch(cli.System.IO.IOException x)
@@ -307,6 +308,7 @@ public final class FileDescriptor
 	try
 	{
 	    if(false) throw new cli.System.IO.IOException();
+	    stream.Flush();
 	    int count = stream.Read(ByteArrayHack.cast(buf), offset, len);
 	    if(count == 0)
 	    {
@@ -345,6 +347,8 @@ public final class FileDescriptor
 	{
 	    if(false) throw new cli.System.IO.IOException();
 	    stream.Write(ByteArrayHack.cast(buf), offset, len);
+	    // NOTE FileStream buffers the output, so we have to flush explicitly
+	    stream.Flush();
 	}
 	catch(cli.System.IO.IOException x)
 	{
