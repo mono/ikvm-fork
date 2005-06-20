@@ -335,7 +335,7 @@ public final class Method extends AccessibleObject implements Member
      * @throws ExceptionInInitializerError if accessing a static method triggered
      *         class initialization, which then failed
      */
-    public Object invoke(Object o, Object[] args)
+    public Object invoke(Object o, Object... args)
 	throws IllegalAccessException, InvocationTargetException
     {
 	if(!isAccessible() && (!Modifier.isPublic(modifiers) || !classIsPublic))

@@ -74,7 +74,7 @@ import gnu.classpath.VMStackWalker;
  * @since 1.1
  * @status updated to 1.4
  */
-public final class Constructor
+public final class Constructor<T>
     extends AccessibleObject implements Member
 {
     private Class declaringClass;
@@ -257,7 +257,7 @@ public final class Constructor
      * @throws ExceptionInInitializerError if construction triggered class
      *         initialization, which then failed
      */
-    public Object newInstance(Object args[])
+    public T newInstance(Object... args)
 	throws InstantiationException, IllegalAccessException,
 	InvocationTargetException
     {
@@ -268,6 +268,6 @@ public final class Constructor
 	{
 	    throw new InstantiationException();
 	}
-	return Method.Invoke(methodCookie, null, args);
+	return (T)Method.Invoke(methodCookie, null, args);
     }
 }
