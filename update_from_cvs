@@ -1,2 +1,3 @@
 rsync -av rsync://ikvm.cvs.sourceforge.net/cvsroot/ikvm/ /tmp/ikvm
-git cvsimport -d /tmp/ikvm -v -u -z 1200 -k ikvm
+git cvsimport -d /tmp/ikvm -v -u -z 1200 -k ikvm -o master
+rm -rf /tmp/ikvm
