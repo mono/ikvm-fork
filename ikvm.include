@@ -1,10 +1,5 @@
 <?xml version="1.0"?>
 <project name="ikvm-include">
-    <!-- find ilasm.exe -->
-    <if test="${(not property::exists('ilasm')) and file::exists(path::combine(framework::get-framework-directory(framework::get-target-framework()), 'ilasm.exe'))}">
-        <property name="ilasm" value="${path::combine(framework::get-framework-directory(framework::get-target-framework()), 'ilasm.exe')}" />
-    </if>
-
     <!-- find peverify.exe -->
     <if test="${(not property::exists('peverify')) and framework::sdk-exists(framework::get-target-framework()) and file::exists(path::combine(framework::get-sdk-directory(framework::get-target-framework()), 'peverify.exe'))}">
         <property name="peverify" value="${path::combine(framework::get-sdk-directory(framework::get-target-framework()), 'peverify.exe')}" />
@@ -14,11 +9,6 @@
         <if test="${(not property::exists('peverify')) and framework::sdk-exists('net-2.0') and file::exists(path::combine(framework::get-sdk-directory('net-2.0'), 'peverify.exe'))}">
             <property name="peverify" value="${path::combine(framework::get-sdk-directory('net-2.0'), 'peverify.exe')}" />
         </if>
-    </if>
-
-    <!-- find rc.exe -->
-    <if test="${(not property::exists('rc')) and framework::sdk-exists(framework::get-target-framework()) and file::exists(path::combine(framework::get-sdk-directory(framework::get-target-framework()), 'rc.exe'))}">
-        <property name="rc" value="${path::combine(framework::get-sdk-directory(framework::get-target-framework()), 'rc.exe')}" />
     </if>
 
     <!-- HACK to support targetting .NET 4.0 when 4.5 is installed, we have to figure out the reference path ourself -->
