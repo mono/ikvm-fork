@@ -120,7 +120,7 @@ namespace IKVM.Reflection
 					result = AssemblyComparisonResult.EquivalentPartialMatch;
 					return true;
 				}
-				else if (IsFrameworkAssembly(name2))
+				else if (IsFrameworkAssembly(name2) || IsFacadeAssembly(name2))
 				{
 					result = partial ? AssemblyComparisonResult.EquivalentPartialFXUnified : AssemblyComparisonResult.EquivalentFXUnified;
 					return true;
@@ -228,6 +228,59 @@ namespace IKVM.Reflection
 			}
 
 			return false;
+		}
+
+		static bool IsFacadeAssembly (ParsedAssemblyName name)
+		{
+			switch (name.Name) {
+			case "System.Collections":
+			case "System.Collections.Concurrent":
+			case "System.ComponentModel":
+			case "System.ComponentModel.Annotations":
+			case "System.ComponentModel.EventBasedAsync":
+			case "System.Diagnostics.Contracts":
+			case "System.Diagnostics.Debug":
+			case "System.Diagnostics.Tools":
+			case "System.Dynamic.Runtime":
+			case "System.Globalization":
+			case "System.IO":
+			case "System.Linq":
+			case "System.Linq.Expressions":
+			case "System.Linq.Parallel":
+			case "System.Linq.Queryable":
+			case "System.Net.NetworkInformation":
+			case "System.Net.Primitives":
+			case "System.Net.Requests":
+			case "System.ObjectModel":
+			case "System.Reflection":
+			case "System.Reflection.Extensions":
+			case "System.Reflection.Primitives":
+			case "System.Resources.ResourceManager":
+			case "System.Runtime":
+			case "System.Runtime.Extensions":
+			case "System.Runtime.InteropServices":
+			case "System.Runtime.Numerics":
+			case "System.Runtime.Serialization.Json":
+			case "System.Runtime.Serialization.Primitives":
+			case "System.Runtime.Serialization.Xml":
+			case "System.Security.Principal":
+			case "System.ServiceModel.Http":
+			case "System.ServiceModel.Primitives":
+			case "System.Text.Encoding":
+			case "System.Text.Encoding.Extensions":
+			case "System.Text.RegularExpressions":
+			case "System.Threading":
+			case "System.Threading.Tasks":
+			case "System.Threading.Tasks.Parallel":
+			case "System.Windows":
+			case "System.Xml.ReaderWriter":
+			case "System.Xml.Serialization":
+			case "System.Xml.XDocument":
+			case "System.Xml.XmlSerializer":
+				return name.PublicKeyToken == "b03f5f7f11d50a3a";
+			default:
+				return false;
+			}
 		}
 
 		internal static ParseAssemblyResult ParseAssemblySimpleName(string fullName, out int pos, out string simpleName)
