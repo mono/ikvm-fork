@@ -1109,16 +1109,6 @@ namespace IKVM.Reflection.Reader
 			return arr;
 		}
 
-		public override Type[] __GetTypeForwarders ()
-		{
-			Type[] forwarded =new Type[forwardedTypes.Count];
-			int i = 0;
-			foreach (var kv in forwardedTypes) {
-				forwarded [i++] = kv.Value.GetType (this);
-			}
-			return forwarded;
-		}
-
 		private Type ResolveExportedType(int index)
 		{
 			TypeName typeName = GetTypeName(ExportedType.records[index].TypeNamespace, ExportedType.records[index].TypeName);

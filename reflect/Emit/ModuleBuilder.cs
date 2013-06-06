@@ -1612,11 +1612,6 @@ namespace IKVM.Reflection.Emit
 			throw new NotImplementedException();
 		}
 
-		public override Type[] __GetTypeForwarders ()
-		{
-			throw new NotImplementedException ();
-		}
-
 		public int __AddModule(int flags, string name, byte[] hash)
 		{
 			FileTable.Record file = new FileTable.Record();

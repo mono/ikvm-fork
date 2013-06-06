@@ -488,7 +488,6 @@ namespace IKVM.Reflection
 		public abstract Type[] __GetReferencedTypes();
 
 		public abstract Type[] __GetExportedTypes();
-		public abstract Type[] __GetTypeForwarders();
 
 		public virtual bool __IsMissing
 		{
@@ -642,11 +641,6 @@ namespace IKVM.Reflection
 		}
 
 		public override Type[] __GetExportedTypes()
-		{
-			throw NotSupportedException();
-		}
-
-		public override Type[] __GetTypeForwarders ()
 		{
 			throw NotSupportedException();
 		}
