@@ -112,6 +112,10 @@ namespace IKVM.Reflection
 				}
 				else if (name1.PublicKeyToken != name2.PublicKeyToken)
 				{
+					if (HasPclRuntimeRemapping (name1, name2)) {
+						result = AssemblyComparisonResult.EquivalentFXUnified;
+						return true;
+					}
 					result = AssemblyComparisonResult.NonEquivalent;
 					return false;
 				}
@@ -173,6 +177,51 @@ namespace IKVM.Reflection
 				return true;
 			}
 		}
+
+		#region PCL Runtime Remapping
+
+		// keep this in sync with the key_remap_table in mono/metadata/assembly.c
+
+		const string SILVERLIGHT_KEY = "7cec85d7bea7798e";
+		const string WINFX_KEY = "31bf3856ad364e35";
+		const string ECMA_KEY = "b77a5c561934e089";
+		const string MSFINAL_KEY = "b03f5f7f11d50a3a";
+
+		static readonly string[,] key_remap_table = new string[,] {
+			{ "Microsoft.CSharp", WINFX_KEY, MSFINAL_KEY },
+			{ "System", SILVERLIGHT_KEY, ECMA_KEY },
+			{ "System.ComponentModel.Composition", WINFX_KEY, ECMA_KEY },
+			{ "System.ComponentModel.DataAnnotations", "ddd0da4d3e678217", WINFX_KEY },
+			{ "System.Core", SILVERLIGHT_KEY, ECMA_KEY },
+			// FIXME: MS uses MSFINAL_KEY for .NET 4.5
+			{ "System.Net", SILVERLIGHT_KEY, ECMA_KEY },
+			{ "System.Numerics", WINFX_KEY, MSFINAL_KEY },
+			{ "System.Runtime.Serialization", SILVERLIGHT_KEY, ECMA_KEY },
+			{ "System.ServiceModel", WINFX_KEY, ECMA_KEY },
+			{ "System.ServiceModel.Web", SILVERLIGHT_KEY, WINFX_KEY },
+			{ "System.Windows", SILVERLIGHT_KEY, MSFINAL_KEY },
+			{ "System.Xml", SILVERLIGHT_KEY, ECMA_KEY },
+			{ "System.Xml.Linq", WINFX_KEY, ECMA_KEY },
+			{ "System.Xml.Serialization", WINFX_KEY, MSFINAL_KEY }
+		};
+
+		static bool HasPclRuntimeRemapping(ParsedAssemblyName name1, ParsedAssemblyName name2)
+		{
+			if (name1.Name != name2.Name)
+				return false;
+
+			for (int i = 0; i < key_remap_table.GetLength (0); i++) {
+				if (!name1.Name.Equals (key_remap_table [i,0]))
+					continue;
+				if (name1.PublicKeyToken.Equals (key_remap_table [i, 1]) &&
+				    name2.PublicKeyToken.Equals (key_remap_table [i, 2]))
+					return true;
+			}
+
+			return false;
+		}
+
+		#endregion
 
 		static bool IsFrameworkAssembly(ParsedAssemblyName name)
 		{
@@ -272,9 +321,7 @@ namespace IKVM.Reflection
 			case "System.Threading":
 			case "System.Threading.Tasks":
 			case "System.Threading.Tasks.Parallel":
-			case "System.Windows":
 			case "System.Xml.ReaderWriter":
-			case "System.Xml.Serialization":
 			case "System.Xml.XDocument":
 			case "System.Xml.XmlSerializer":
 				return name.PublicKeyToken == "b03f5f7f11d50a3a";
