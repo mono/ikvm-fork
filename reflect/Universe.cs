@@ -127,6 +127,7 @@ namespace IKVM.Reflection
 		DontProvideAutomaticDefaultConstructor = 8,
 		MetadataOnly = 16,
 		ResolveMissingMembers = 32,
+		SupressReferenceTypeIdentityConversion = 64
 	}
 
 	public sealed class Universe : IDisposable
@@ -1189,6 +1190,11 @@ namespace IKVM.Reflection
 		internal bool MetadataOnly
 		{
 			get { return (options & UniverseOptions.MetadataOnly) != 0; }
+		}
+
+		internal bool SupressReferenceTypeIdentityConversion
+		{
+			get { return (options & UniverseOptions.SupressReferenceTypeIdentityConversion) != 0; }
 		}
 	}
 }
