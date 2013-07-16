@@ -228,6 +228,9 @@
             <attribute type="IKVM.Attributes.SignatureAttribute" sig="(Ljava.lang.String;)V">
                 <parameter>Ljava/lang/Object;Ljava/io/Serializable;Ljava/lang/Comparable&lt;Ljava/lang/String;&gt;;Ljava/lang/CharSequence;</parameter>
             </attribute>
+            <attribute type="IKVM.Attributes.NonNestedInnerClassAttribute" sig="(Ljava.lang.String;)V">
+                <parameter>java.lang.String$CaseInsensitiveComparator</parameter>
+            </attribute>
             <field name="serialVersionUID" sig="J" modifiers="private static final" constant="-6849794470754667710" />
             <constructor sig="()V" modifiers="public">
                 <alternateBody>
@@ -895,7 +898,7 @@
             <attribute type="System.SerializableAttribute" sig="()V" />
             <field name="serialVersionUID" sig="J" modifiers="private static final" constant="-3042686055658047285" />
             <field name="serialPersistentFields" sig="[Ljava.io.ObjectStreamField;" modifiers="private static final" />
-            <field name="suppressFillInStackTrace" sig="Z" modifiers="private static">
+            <field name="suppressFillInStackTrace" sig="Z" modifiers="static">
                 <attribute type="System.ThreadStaticAttribute" sig="()V" />
             </field>
             <field name="UNASSIGNED_STACK" sig="[Ljava.lang.StackTraceElement;" modifiers="static final" />
@@ -1665,23 +1668,6 @@
                     <volatile />
                     <stfld class="java.lang.Thread" name="parkLock" sig="Ljava.lang.Object;" />
                     <call type="System.Threading.Thread" name="MemoryBarrier" sig="" />
-                    <ret />
-                </body>
-            </method>
-        </class>
-        <class name="java.lang.Package">
-            <method name="getSystemPackage" sig="(Ljava.lang.String;)Ljava.lang.Package;">
-                <body>
-                    <ldsfld class="java.lang.Package" name="pkgs" sig="Ljava.util.Map;" />
-                    <ldarg_0 />
-                    <call class="java.lang.LangHelper" name="getSystemPackage" sig="(Ljava.util.Map;Ljava.lang.String;)Ljava.lang.Package;" />
-                    <ret />
-                </body>
-            </method>
-            <method name="getSystemPackages" sig="()[Ljava.lang.Package;">
-                <body>
-                    <ldsfld class="java.lang.Package" name="pkgs" sig="Ljava.util.Map;" />
-                    <call class="java.lang.LangHelper" name="getSystemPackages" sig="(Ljava.util.Map;)[Ljava.lang.Package;" />
                     <ret />
                 </body>
             </method>
@@ -2732,7 +2718,7 @@
                 </attribute>
                 <body>
                     <ldarg_0 />
-                    <call type="IKVM.NativeCode.sun.reflect.Reflection" name="getCallerClass" sig="(I)Ljava.lang.Object;" />
+                    <call type="Java_sun_reflect_Reflection" name="getCallerClass" sig="(I)Ljava.lang.Object;" />
                     <stloc name="class" class="java.lang.Object" />
                     <!-- "leave" is to thwart tail-call optimization -->
                     <leave name="x" />
