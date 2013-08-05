@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2002-2012 Jeroen Frijters
+  Copyright (C) 2002-2013 Jeroen Frijters
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -65,8 +65,7 @@ namespace IKVM.Internal
 		private const ushort FLAG_MASK_MAJORVERSION = 0xFF;
 		private const ushort FLAG_MASK_DEPRECATED = 0x100;
 		private const ushort FLAG_MASK_INTERNAL = 0x200;
-		private const ushort FLAG_MASK_EFFECTIVELY_FINAL = 0x400;
-		private const ushort FLAG_HAS_CALLERID = 0x800;
+		private const ushort FLAG_HAS_CALLERID = 0x400;
 		private ConstantPoolItemClass[] interfaces;
 		private Field[] fields;
 		private Method[] methods;
@@ -84,7 +83,7 @@ namespace IKVM.Internal
 		private static class SupportedVersions
 		{
 			internal static readonly int Minimum = 45;
-			internal static readonly int Maximum = JVM.SafeGetEnvironmentVariable("IKVM_EXPERIMENTAL_JDK_8") != null ? 52 : 51;
+			internal static readonly int Maximum = Experimental.JDK_8 ? 52 : 51;
 		}
 
 #if STATIC_COMPILER
@@ -424,8 +423,9 @@ namespace IKVM.Internal
 							}
 							else
 							{
-								int class_index = br.ReadUInt16();
-								int method_index = br.ReadUInt16();
+								ushort class_index = br.ReadUInt16();
+								ushort method_index = br.ReadUInt16();
+								ValidateConstantPoolItemClass(inputClassName, class_index);
 								if(method_index == 0)
 								{
 									enclosingMethod = new string[] {
@@ -436,7 +436,11 @@ namespace IKVM.Internal
 								}
 								else
 								{
-									ConstantPoolItemNameAndType m = (ConstantPoolItemNameAndType)GetConstantPoolItem(method_index);
+									ConstantPoolItemNameAndType m = GetConstantPoolItem(method_index) as ConstantPoolItemNameAndType;
+									if(m == null)
+									{
+										throw new ClassFormatError("{0} (Bad constant pool index #{1})", inputClassName, method_index);
+									}
 									enclosingMethod = new string[] {
 										GetConstantPoolClass(class_index),
 										GetConstantPoolUtf8String(utf8_cp, m.name_index),
@@ -1211,19 +1215,6 @@ namespace IKVM.Internal
 			flags |= FLAG_MASK_INTERNAL;
 		}
 
-		internal void SetEffectivelyFinal()
-		{
-			flags |= FLAG_MASK_EFFECTIVELY_FINAL;
-		}
-
-		internal bool IsEffectivelyFinal
-		{
-			get
-			{
-				return (flags & FLAG_MASK_EFFECTIVELY_FINAL) != 0;
-			}
-		}
-
 		internal bool HasInitializedFields
 		{
 			get
@@ -1429,7 +1420,7 @@ namespace IKVM.Internal
 			{
 				if(typeWrapper == VerifierTypeWrapper.Null)
 				{
-					TypeWrapper tw = ClassLoaderWrapper.LoadClassNoThrow(thisType.GetClassLoader(), name);
+					TypeWrapper tw = ClassLoaderWrapper.LoadClassNoThrow(thisType.GetClassLoader(), name, true);
 #if !STATIC_COMPILER && !FIRST_PASS
 					if(!tw.IsUnloadable)
 					{
@@ -1765,6 +1756,10 @@ namespace IKVM.Internal
 
 			private static MethodWrapper GetInterfaceMethod(TypeWrapper wrapper, string name, string sig)
 			{
+				if(wrapper.IsUnloadable)
+				{
+					return null;
+				}
 				MethodWrapper method = wrapper.GetMethodWrapper(name, sig, false);
 				if(method != null)
 				{
@@ -1786,7 +1781,7 @@ namespace IKVM.Internal
 			{
 				base.Link(thisType);
 				TypeWrapper wrapper = GetClassType();
-				if(wrapper != null && !wrapper.IsUnloadable)
+				if(wrapper != null)
 				{
 					method = GetInterfaceMethod(wrapper, Name, Signature);
 					if(method == null)
@@ -2562,6 +2557,7 @@ namespace IKVM.Internal
 			private Code code;
 			private string[] exceptions;
 			private LowFreqData low;
+			private MethodParametersEntry[] parameters;
 
 			sealed class LowFreqData
 			{
@@ -2589,9 +2585,9 @@ namespace IKVM.Internal
 					if((ReferenceEquals(Name, StringConstants.INIT) && (IsStatic || IsSynchronized || IsFinal || IsAbstract || IsNative))
 						|| (IsPrivate && IsPublic) || (IsPrivate && IsProtected) || (IsPublic && IsProtected)
 						|| (IsAbstract && (IsFinal || IsNative || IsPrivate || IsStatic || IsSynchronized))
-						|| (classFile.IsInterface && (!IsPublic || !IsAbstract)))
+						|| (classFile.IsInterface && (!IsPublic || IsFinal || IsNative || IsSynchronized || (!IsAbstract && classFile.MajorVersion < 52))))
 					{
-						throw new ClassFormatError("{0} (Illegal method modifiers: 0x{1:X})", classFile.Name, access_flags);
+						throw new ClassFormatError("Method {0} in class {1} has illegal modifiers: 0x{2:X}", Name, classFile.Name, (int)access_flags);
 					}
 				}
 				int attributes_count = br.ReadUInt16();
@@ -2762,6 +2758,30 @@ namespace IKVM.Internal
 							}
 							break;
 #endif
+						case "MethodParameters":
+						{
+							if(classFile.MajorVersion < 52)
+							{
+								goto default;
+							}
+							if(parameters != null)
+							{
+								throw new ClassFormatError("{0} (Duplicate MethodParameters attribute)", classFile.Name);
+							}
+							BigEndianBinaryReader rdr = br.Section(br.ReadUInt32());
+							byte parameters_count = rdr.ReadByte();
+							parameters = new MethodParametersEntry[parameters_count];
+							for(int j = 0; j < parameters_count; j++)
+							{
+								parameters[j].name = classFile.GetConstantPoolUtf8String(utf8_cp, rdr.ReadUInt16());
+								parameters[j].flags = rdr.ReadUInt16();
+							}
+							if(!rdr.IsAtEnd)
+							{
+								throw new ClassFormatError("{0} (MethodParameters attribute has wrong length)", classFile.Name);
+							}
+							break;
+						}
 						default:
 							br.Skip(br.ReadUInt32());
 							break;
@@ -2783,7 +2803,7 @@ namespace IKVM.Internal
 							code.verifyError = string.Format("Class {0}, method {1} signature {2}: No Code attribute", classFile.Name, this.Name, this.Signature);
 							return;
 						}
-						throw new ClassFormatError("Method has no Code attribute");
+						throw new ClassFormatError("Absent Code attribute in method that is not native or abstract in class file " + classFile.Name);
 					}
 				}
 			}
@@ -2942,6 +2962,14 @@ namespace IKVM.Internal
 				get
 				{
 					return code.localVariableTable;
+				}
+			}
+
+			internal MethodParametersEntry[] MethodParameters
+			{
+				get
+				{
+					return parameters;
 				}
 			}
 
@@ -3525,6 +3553,12 @@ namespace IKVM.Internal
 				internal string name;
 				internal string descriptor;
 				internal ushort index;
+			}
+
+			internal struct MethodParametersEntry
+			{
+				internal string name;
+				internal ushort flags;
 			}
 		}
 
