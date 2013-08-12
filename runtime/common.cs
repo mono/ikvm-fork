@@ -49,7 +49,7 @@ namespace IKVM.NativeCode.gnu.java.net.protocol.ikvmres
 			MemoryStream mem = new MemoryStream();
 #if !FIRST_PASS
 			bool includeNonPublicInterfaces = !"true".Equals(global::java.lang.Props.props.getProperty("ikvm.stubgen.skipNonPublicInterfaces"), StringComparison.OrdinalIgnoreCase);
-			IKVM.StubGen.StubGenerator.WriteClass(mem, TypeWrapper.FromClass(c), includeNonPublicInterfaces, false, false);
+			IKVM.StubGen.StubGenerator.WriteClass(mem, TypeWrapper.FromClass(c), includeNonPublicInterfaces, false, false, false);
 #endif
 			return mem.ToArray();
 		}
@@ -117,11 +117,7 @@ namespace IKVM.NativeCode.java.lang
 
 		public static string getBootClassPath()
 		{
-#if FIRST_PASS
-			return null;
-#else
 			return VirtualFileSystem.GetAssemblyClassesPath(JVM.CoreAssembly);
-#endif
 		}
 	}
 }
@@ -146,60 +142,15 @@ namespace IKVM.NativeCode.ikvm.@internal
 		}
 	}
 
-	namespace stubgen
+	static class AnnotationAttributeBase
 	{
-		static class StubGenerator
+		public static object newAnnotationInvocationHandler(jlClass type, object memberValues)
 		{
-			public static int getRealModifiers(jlClass c)
-			{
-				return (int)TypeWrapper.FromClass(c).Modifiers;
-			}
-
-			public static string getAssemblyName(jlClass c)
-			{
-				TypeWrapper wrapper = TypeWrapper.FromClass(c);
-				ClassLoaderWrapper loader = wrapper.GetClassLoader();
-				IKVM.Internal.AssemblyClassLoader acl = loader as IKVM.Internal.AssemblyClassLoader;
-				if(acl != null)
-				{
-					return acl.GetAssembly(wrapper).FullName;
-				}
-				else
-				{
-					return ((GenericClassLoaderWrapper)loader).GetName();
-				}
-			}
-
-			public static object getFieldConstantValue(object field)
-			{
-				return FieldWrapper.FromField(field).GetConstant();
-			}
-
-			public static bool isFieldDeprecated(object field)
-			{
-				FieldWrapper fieldWrapper = FieldWrapper.FromField(field);
-				FieldInfo fi = fieldWrapper.GetField();
-				if(fi != null)
-				{
-					return fi.IsDefined(typeof(ObsoleteAttribute), false);
-				}
-				return false;
-			}
-
-			public static bool isMethodDeprecated(object method)
-			{
-				MethodWrapper mw = MethodWrapper.FromMethodOrConstructor(method);
-				MethodBase mb = mw.GetMethod();
-				return mb != null && mb.IsDefined(typeof(ObsoleteAttribute), false);
-			}
-
-			public static bool isClassDeprecated(jlClass clazz)
-			{
-				Type type = TypeWrapper.FromClass(clazz).TypeAsTBD;
-				// we need to check type for null, because ReflectionOnly
-				// generated delegate inner interfaces don't really exist
-				return type != null && type.IsDefined(typeof(ObsoleteAttribute), false);
-			}
+#if FIRST_PASS
+			return null;
+#else
+			return new global::sun.reflect.annotation.AnnotationInvocationHandler(type, (global::java.util.Map)memberValues);
+#endif
 		}
 	}
 }
@@ -228,7 +179,9 @@ namespace IKVM.NativeCode.ikvm.runtime
 				TypeWrapper tw = wrapper.LoadClass(name);
 				if (tw == null)
 				{
-					throw new ClassNotFoundException(name);
+					Tracer.Info(Tracer.ClassLoading, "Failed to load class \"{0}\" from {1}", name, _this);
+					global::java.lang.Throwable.suppressFillInStackTrace = true;
+					throw new global::java.lang.ClassNotFoundException(name);
 				}
 				Tracer.Info(Tracer.ClassLoading, "Loaded class \"{0}\" from {1}", name, _this);
 				return tw.ClassObject;
