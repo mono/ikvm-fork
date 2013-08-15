@@ -29,8 +29,6 @@ import cli.Microsoft.Win32.SafeHandles.SafeFileHandle;
 import cli.System.IntPtr;
 import cli.System.IO.FileStream;
 import cli.System.Runtime.InteropServices.DllImportAttribute;
-import cli.System.Runtime.InteropServices.StructLayoutAttribute;
-import cli.System.Runtime.InteropServices.LayoutKind;
 import java.io.FileDescriptor;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -40,6 +38,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.security.AccessController;
 import sun.misc.Cleaner;
+import sun.misc.IoTrace;
 import sun.security.action.GetPropertyAction;
 
 public class FileChannelImpl
@@ -64,13 +63,16 @@ public class FileChannelImpl
     // Required to prevent finalization of creating stream (immutable)
     private final Object parent;
 
+    // The path of the referenced file (null if the parent stream is created with a file descriptor)
+    private final String path;
+
     // Thread-safe set of IDs of native threads, for signalling
     private final NativeThreadSet threads = new NativeThreadSet(2);
 
     // Lock for operations involving position and size
     private final Object positionLock = new Object();
 
-    private FileChannelImpl(FileDescriptor fd, boolean readable,
+    private FileChannelImpl(FileDescriptor fd, String path, boolean readable,
                             boolean writable, boolean append, Object parent)
     {
         this.fd = fd;
@@ -78,23 +80,24 @@ public class FileChannelImpl
         this.writable = writable;
         this.append = append;
         this.parent = parent;
+        this.path = path;
         this.nd = new FileDispatcherImpl(append);
     }
 
     // Used by FileInputStream.getChannel() and RandomAccessFile.getChannel()
-    public static FileChannel open(FileDescriptor fd,
+    public static FileChannel open(FileDescriptor fd, String path,
                                    boolean readable, boolean writable,
                                    Object parent)
     {
-        return new FileChannelImpl(fd, readable, writable, false, parent);
+        return new FileChannelImpl(fd, path, readable, writable, false, parent);
     }
 
     // Used by FileOutputStream.getChannel
-    public static FileChannel open(FileDescriptor fd,
+    public static FileChannel open(FileDescriptor fd, String path,
                                    boolean readable, boolean writable,
                                    boolean append, Object parent)
     {
-        return new FileChannelImpl(fd, readable, writable, append, parent);
+        return new FileChannelImpl(fd, path, readable, writable, append, parent);
     }
 
     private void ensureOpen() throws IOException {
@@ -142,6 +145,7 @@ public class FileChannelImpl
         synchronized (positionLock) {
             int n = 0;
             int ti = -1;
+            Object traceContext = IoTrace.fileReadBegin(path);
             try {
                 begin();
                 ti = threads.add();
@@ -153,6 +157,7 @@ public class FileChannelImpl
                 return IOStatus.normalize(n);
             } finally {
                 threads.remove(ti);
+                IoTrace.fileReadEnd(traceContext, n > 0 ? n : 0);
                 end(n > 0);
                 assert IOStatus.check(n);
             }
@@ -170,6 +175,7 @@ public class FileChannelImpl
         synchronized (positionLock) {
             long n = 0;
             int ti = -1;
+            Object traceContext = IoTrace.fileReadBegin(path);
             try {
                 begin();
                 ti = threads.add();
@@ -181,6 +187,7 @@ public class FileChannelImpl
                 return IOStatus.normalize(n);
             } finally {
                 threads.remove(ti);
+                IoTrace.fileReadEnd(traceContext, n > 0 ? n : 0);
                 end(n > 0);
                 assert IOStatus.check(n);
             }
@@ -194,6 +201,7 @@ public class FileChannelImpl
         synchronized (positionLock) {
             int n = 0;
             int ti = -1;
+            Object traceContext = IoTrace.fileWriteBegin(path);
             try {
                 begin();
                 ti = threads.add();
@@ -206,6 +214,7 @@ public class FileChannelImpl
             } finally {
                 threads.remove(ti);
                 end(n > 0);
+                IoTrace.fileWriteEnd(traceContext, n > 0 ? n : 0);
                 assert IOStatus.check(n);
             }
         }
@@ -222,6 +231,7 @@ public class FileChannelImpl
         synchronized (positionLock) {
             long n = 0;
             int ti = -1;
+            Object traceContext = IoTrace.fileWriteBegin(path);
             try {
                 begin();
                 ti = threads.add();
@@ -233,6 +243,7 @@ public class FileChannelImpl
                 return IOStatus.normalize(n);
             } finally {
                 threads.remove(ti);
+                IoTrace.fileWriteEnd(traceContext, n > 0 ? n : 0);
                 end(n > 0);
                 assert IOStatus.check(n);
             }
@@ -513,6 +524,7 @@ public class FileChannelImpl
         ensureOpen();
         int n = 0;
         int ti = -1;
+        Object traceContext = IoTrace.fileReadBegin(path);
         try {
             begin();
             ti = threads.add();
@@ -524,6 +536,7 @@ public class FileChannelImpl
             return IOStatus.normalize(n);
         } finally {
             threads.remove(ti);
+            IoTrace.fileReadEnd(traceContext, n > 0 ? n : 0);
             end(n > 0);
             assert IOStatus.check(n);
         }
@@ -539,6 +552,7 @@ public class FileChannelImpl
         ensureOpen();
         int n = 0;
         int ti = -1;
+        Object traceContext = IoTrace.fileWriteBegin(path);
         try {
             begin();
             ti = threads.add();
@@ -551,6 +565,7 @@ public class FileChannelImpl
         } finally {
             threads.remove(ti);
             end(n > 0);
+            IoTrace.fileWriteEnd(traceContext, n > 0 ? n : 0);
             assert IOStatus.check(n);
         }
     }
