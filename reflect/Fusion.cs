@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2010-2012 Jeroen Frijters
+  Copyright (C) 2010-2013 Jeroen Frijters
   Copyright (C) 2011 Marek Safar
 
   This software is provided 'as-is', without any express or implied
@@ -87,12 +87,12 @@ namespace IKVM.Reflection
 				result = AssemblyComparisonResult.NonEquivalent;
 				throw new ArgumentException();
 			}
-			if (!name1.Name.Equals(name2.Name, StringComparison.InvariantCultureIgnoreCase))
+			if (!name1.Name.Equals(name2.Name, StringComparison.OrdinalIgnoreCase))
 			{
 				result = AssemblyComparisonResult.NonEquivalent;
 				return false;
 			}
-			if (name1.Name.Equals("mscorlib", StringComparison.InvariantCultureIgnoreCase))
+			if (name1.Name.Equals("mscorlib", StringComparison.OrdinalIgnoreCase))
 			{
 				result = AssemblyComparisonResult.EquivalentFullMatch;
 				return true;
@@ -100,7 +100,7 @@ namespace IKVM.Reflection
 			if (partial && name1.Culture == null)
 			{
 			}
-			else if (!name1.Culture.Equals(name2.Culture, StringComparison.InvariantCultureIgnoreCase))
+			else if (!name1.Culture.Equals(name2.Culture, StringComparison.OrdinalIgnoreCase))
 			{
 				result = AssemblyComparisonResult.NonEquivalent;
 				return false;
@@ -112,10 +112,6 @@ namespace IKVM.Reflection
 				}
 				else if (name1.PublicKeyToken != name2.PublicKeyToken)
 				{
-					if (HasPclRuntimeRemapping (name1, name2)) {
-						result = AssemblyComparisonResult.EquivalentFXUnified;
-						return true;
-					}
 					result = AssemblyComparisonResult.NonEquivalent;
 					return false;
 				}
@@ -124,7 +120,7 @@ namespace IKVM.Reflection
 					result = AssemblyComparisonResult.EquivalentPartialMatch;
 					return true;
 				}
-				else if (IsFrameworkAssembly(name2) || IsFacadeAssembly(name2))
+				else if (IsFrameworkAssembly(name2))
 				{
 					result = partial ? AssemblyComparisonResult.EquivalentPartialFXUnified : AssemblyComparisonResult.EquivalentFXUnified;
 					return true;
@@ -177,51 +173,6 @@ namespace IKVM.Reflection
 				return true;
 			}
 		}
-
-		#region PCL Runtime Remapping
-
-		// keep this in sync with the key_remap_table in mono/metadata/assembly.c
-
-		const string SILVERLIGHT_KEY = "7cec85d7bea7798e";
-		const string WINFX_KEY = "31bf3856ad364e35";
-		const string ECMA_KEY = "b77a5c561934e089";
-		const string MSFINAL_KEY = "b03f5f7f11d50a3a";
-
-		static readonly string[,] key_remap_table = new string[,] {
-			{ "Microsoft.CSharp", WINFX_KEY, MSFINAL_KEY },
-			{ "System", SILVERLIGHT_KEY, ECMA_KEY },
-			{ "System.ComponentModel.Composition", WINFX_KEY, ECMA_KEY },
-			{ "System.ComponentModel.DataAnnotations", "ddd0da4d3e678217", WINFX_KEY },
-			{ "System.Core", SILVERLIGHT_KEY, ECMA_KEY },
-			// FIXME: MS uses MSFINAL_KEY for .NET 4.5
-			{ "System.Net", SILVERLIGHT_KEY, ECMA_KEY },
-			{ "System.Numerics", WINFX_KEY, MSFINAL_KEY },
-			{ "System.Runtime.Serialization", SILVERLIGHT_KEY, ECMA_KEY },
-			{ "System.ServiceModel", WINFX_KEY, ECMA_KEY },
-			{ "System.ServiceModel.Web", SILVERLIGHT_KEY, WINFX_KEY },
-			{ "System.Windows", SILVERLIGHT_KEY, MSFINAL_KEY },
-			{ "System.Xml", SILVERLIGHT_KEY, ECMA_KEY },
-			{ "System.Xml.Linq", WINFX_KEY, ECMA_KEY },
-			{ "System.Xml.Serialization", WINFX_KEY, MSFINAL_KEY }
-		};
-
-		static bool HasPclRuntimeRemapping(ParsedAssemblyName name1, ParsedAssemblyName name2)
-		{
-			if (name1.Name != name2.Name)
-				return false;
-
-			for (int i = 0; i < key_remap_table.GetLength (0); i++) {
-				if (!name1.Name.Equals (key_remap_table [i,0]))
-					continue;
-				if (name1.PublicKeyToken.Equals (key_remap_table [i, 1]) &&
-				    name2.PublicKeyToken.Equals (key_remap_table [i, 2]))
-					return true;
-			}
-
-			return false;
-		}
-
-		#endregion
 
 		static bool IsFrameworkAssembly(ParsedAssemblyName name)
 		{
@@ -279,113 +230,10 @@ namespace IKVM.Reflection
 			return false;
 		}
 
-		static bool IsFacadeAssembly (ParsedAssemblyName name)
-		{
-			switch (name.Name) {
-			case "System.Collections":
-			case "System.Collections.Concurrent":
-			case "System.ComponentModel":
-			case "System.ComponentModel.Annotations":
-			case "System.ComponentModel.EventBasedAsync":
-			case "System.Diagnostics.Contracts":
-			case "System.Diagnostics.Debug":
-			case "System.Diagnostics.Tools":
-			case "System.Dynamic.Runtime":
-			case "System.Globalization":
-			case "System.IO":
-			case "System.Linq":
-			case "System.Linq.Expressions":
-			case "System.Linq.Parallel":
-			case "System.Linq.Queryable":
-			case "System.Net.NetworkInformation":
-			case "System.Net.Primitives":
-			case "System.Net.Requests":
-			case "System.ObjectModel":
-			case "System.Reflection":
-			case "System.Reflection.Extensions":
-			case "System.Reflection.Primitives":
-			case "System.Resources.ResourceManager":
-			case "System.Runtime":
-			case "System.Runtime.Extensions":
-			case "System.Runtime.InteropServices":
-			case "System.Runtime.Numerics":
-			case "System.Runtime.Serialization.Json":
-			case "System.Runtime.Serialization.Primitives":
-			case "System.Runtime.Serialization.Xml":
-			case "System.Security.Principal":
-			case "System.ServiceModel.Http":
-			case "System.ServiceModel.Primitives":
-			case "System.Text.Encoding":
-			case "System.Text.Encoding.Extensions":
-			case "System.Text.RegularExpressions":
-			case "System.Threading":
-			case "System.Threading.Tasks":
-			case "System.Threading.Tasks.Parallel":
-			case "System.Xml.ReaderWriter":
-			case "System.Xml.XDocument":
-			case "System.Xml.XmlSerializer":
-				return name.PublicKeyToken == "b03f5f7f11d50a3a";
-			default:
-				return false;
-			}
-		}
-
 		internal static ParseAssemblyResult ParseAssemblySimpleName(string fullName, out int pos, out string simpleName)
 		{
-			StringBuilder sb = new StringBuilder();
 			pos = 0;
-			simpleName = null;
-			while (pos < fullName.Length && char.IsWhiteSpace(fullName[pos]))
-			{
-				pos++;
-			}
-			char quoteOrComma = ',';
-			if (pos < fullName.Length && (fullName[pos] == '\"' || fullName[pos] == '\''))
-			{
-				quoteOrComma = fullName[pos++];
-			}
-			while (pos < fullName.Length)
-			{
-				char ch = fullName[pos++];
-				if (ch == '\\')
-				{
-					if (pos == fullName.Length)
-					{
-						return ParseAssemblyResult.GenericError;
-					}
-					ch = fullName[pos++];
-					if (ch == '\\')
-					{
-						return ParseAssemblyResult.GenericError;
-					}
-				}
-				else if (ch == quoteOrComma)
-				{
-					if (ch != ',')
-					{
-						while (pos != fullName.Length)
-						{
-							ch = fullName[pos++];
-							if (ch == ',')
-							{
-								break;
-							}
-							if (!char.IsWhiteSpace(ch))
-							{
-								return ParseAssemblyResult.GenericError;
-							}
-						}
-					}
-					break;
-				}
-				else if (ch == '=' || (quoteOrComma == ',' && (ch == '\'' || ch == '"')))
-				{
-					return ParseAssemblyResult.GenericError;
-				}
-				sb.Append(ch);
-			}
-			simpleName = sb.ToString().Trim();
-			if (simpleName.Length == 0)
+			if (!TryParse(fullName, ref pos, out simpleName) || simpleName.Length == 0)
 			{
 				return ParseAssemblyResult.GenericError;
 			}
@@ -396,12 +244,88 @@ namespace IKVM.Reflection
 			return ParseAssemblyResult.OK;
 		}
 
+		private static bool TryParse(string fullName, ref int pos, out string value)
+		{
+			value = null;
+			StringBuilder sb = new StringBuilder();
+			while (pos < fullName.Length && char.IsWhiteSpace(fullName[pos]))
+			{
+				pos++;
+			}
+			int quote = -1;
+			if (pos < fullName.Length && (fullName[pos] == '"' || fullName[pos] == '\''))
+			{
+				quote = fullName[pos++];
+			}
+			for (; pos < fullName.Length; pos++)
+			{
+				char ch = fullName[pos];
+				if (ch == '\\')
+				{
+					if (++pos == fullName.Length)
+					{
+						return false;
+					}
+					ch = fullName[pos];
+					if (ch == '\\')
+					{
+						return false;
+					}
+				}
+				else if (ch == quote)
+				{
+					for (pos++; pos != fullName.Length; pos++)
+					{
+						ch = fullName[pos];
+						if (ch == ',' || ch == '=')
+						{
+							break;
+						}
+						if (!char.IsWhiteSpace(ch))
+						{
+							return false;
+						}
+					}
+					break;
+				}
+				else if (quote == -1 && (ch == '"' || ch == '\''))
+				{
+					return false;
+				}
+				else if (quote == -1 && (ch == ',' || ch == '='))
+				{
+					break;
+				}
+				sb.Append(ch);
+			}
+			value = sb.ToString().Trim();
+			return value.Length != 0 || quote != -1;
+		}
+
+		private static bool TryConsume(string fullName, char ch, ref int pos)
+		{
+			if (pos < fullName.Length && fullName[pos] == ch)
+			{
+				pos++;
+				return true;
+			}
+			return false;
+		}
+
+		private static bool TryParseAssemblyAttribute(string fullName, ref int pos, ref string key, ref string value)
+		{
+			return TryConsume(fullName, ',', ref pos)
+				&& TryParse(fullName, ref pos, out key)
+				&& TryConsume(fullName, '=', ref pos)
+				&& TryParse(fullName, ref pos, out value);
+		}
+
 		internal static ParseAssemblyResult ParseAssemblyName(string fullName, out ParsedAssemblyName parsedName)
 		{
 			parsedName = new ParsedAssemblyName();
 			int pos;
 			ParseAssemblyResult res = ParseAssemblySimpleName(fullName, out pos, out parsedName.Name);
-			if (res != ParseAssemblyResult.OK || pos == fullName.Length)
+			if (res != ParseAssemblyResult.OK)
 			{
 				return res;
 			}
@@ -410,22 +334,23 @@ namespace IKVM.Reflection
 				System.Collections.Generic.Dictionary<string, string> unknownAttributes = null;
 				bool hasProcessorArchitecture = false;
 				bool hasContentType = false;
-				string[] parts = fullName.Substring(pos).Split(',');
-				for (int i = 0; i < parts.Length; i++)
+				while (pos != fullName.Length)
 				{
-					string[] kv = parts[i].Split('=');
-					if (kv.Length != 2)
+					string key = null;
+					string value = null;
+					if (!TryParseAssemblyAttribute(fullName, ref pos, ref key, ref value))
 					{
 						return ParseAssemblyResult.GenericError;
 					}
-					switch (kv[0].Trim().ToLowerInvariant())
+					key = key.ToLowerInvariant();
+					switch (key)
 					{
 						case "version":
 							if (parsedName.Version != null)
 							{
 								return ParseAssemblyResult.DuplicateKey;
 							}
-							if (!ParseVersion(kv[1].Trim(), out parsedName.Version))
+							if (!ParseVersion(value, out parsedName.Version))
 							{
 								return ParseAssemblyResult.GenericError;
 							}
@@ -435,7 +360,7 @@ namespace IKVM.Reflection
 							{
 								return ParseAssemblyResult.DuplicateKey;
 							}
-							if (!ParseCulture(kv[1].Trim(), out parsedName.Culture))
+							if (!ParseCulture(value, out parsedName.Culture))
 							{
 								return ParseAssemblyResult.GenericError;
 							}
@@ -445,7 +370,7 @@ namespace IKVM.Reflection
 							{
 								return ParseAssemblyResult.DuplicateKey;
 							}
-							if (!ParsePublicKeyToken(kv[1].Trim(), out parsedName.PublicKeyToken))
+							if (!ParsePublicKeyToken(value, out parsedName.PublicKeyToken))
 							{
 								return ParseAssemblyResult.GenericError;
 							}
@@ -455,7 +380,7 @@ namespace IKVM.Reflection
 							{
 								return ParseAssemblyResult.DuplicateKey;
 							}
-							if (!ParsePublicKey(kv[1].Trim(), out parsedName.PublicKeyToken))
+							if (!ParsePublicKey(value, out parsedName.PublicKeyToken))
 							{
 								return ParseAssemblyResult.GenericError;
 							}
@@ -466,7 +391,7 @@ namespace IKVM.Reflection
 							{
 								return ParseAssemblyResult.DuplicateKey;
 							}
-							switch (kv[1].Trim().ToLowerInvariant())
+							switch (value.ToLowerInvariant())
 							{
 								case "yes":
 									parsedName.Retargetable = true;
@@ -484,7 +409,7 @@ namespace IKVM.Reflection
 								return ParseAssemblyResult.DuplicateKey;
 							}
 							hasProcessorArchitecture = true;
-							switch (kv[1].Trim().ToLowerInvariant())
+							switch (value.ToLowerInvariant())
 							{
 								case "none":
 									parsedName.ProcessorArchitecture = ProcessorArchitecture.None;
@@ -514,14 +439,14 @@ namespace IKVM.Reflection
 								return ParseAssemblyResult.DuplicateKey;
 							}
 							hasContentType = true;
-							if (kv[1].Trim().ToLowerInvariant() != "windowsruntime")
+							if (!value.Equals("windowsruntime", StringComparison.InvariantCultureIgnoreCase))
 							{
 								return ParseAssemblyResult.GenericError;
 							}
 							parsedName.WindowsRuntime = true;
 							break;
 						default:
-							if (kv[1].Trim() == "")
+							if (key.Length == 0)
 							{
 								return ParseAssemblyResult.GenericError;
 							}
@@ -529,16 +454,16 @@ namespace IKVM.Reflection
 							{
 								unknownAttributes = new System.Collections.Generic.Dictionary<string, string>();
 							}
-							if (unknownAttributes.ContainsKey(kv[0].Trim().ToLowerInvariant()))
+							if (unknownAttributes.ContainsKey(key))
 							{
 								return ParseAssemblyResult.DuplicateKey;
 							}
-							unknownAttributes.Add(kv[0].Trim().ToLowerInvariant(), null);
+							unknownAttributes.Add(key, null);
 							break;
 					}
 				}
+				return ParseAssemblyResult.OK;
 			}
-			return ParseAssemblyResult.OK;
 		}
 
 		private static bool ParseVersion(string str, out Version version)
