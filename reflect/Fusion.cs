@@ -194,7 +194,7 @@ namespace IKVM.Reflection
 			{ "System.ComponentModel.DataAnnotations", "ddd0da4d3e678217", WINFX_KEY },
 			{ "System.Core", SILVERLIGHT_KEY, ECMA_KEY },
 			// FIXME: MS uses MSFINAL_KEY for .NET 4.5
-			{ "System.Net", SILVERLIGHT_KEY, ECMA_KEY },
+			{ "System.Net", SILVERLIGHT_KEY, MSFINAL_KEY },
 			{ "System.Numerics", WINFX_KEY, MSFINAL_KEY },
 			{ "System.Runtime.Serialization", SILVERLIGHT_KEY, ECMA_KEY },
 			{ "System.ServiceModel", WINFX_KEY, ECMA_KEY },
@@ -202,7 +202,7 @@ namespace IKVM.Reflection
 			{ "System.Windows", SILVERLIGHT_KEY, MSFINAL_KEY },
 			{ "System.Xml", SILVERLIGHT_KEY, ECMA_KEY },
 			{ "System.Xml.Linq", WINFX_KEY, ECMA_KEY },
-			{ "System.Xml.Serialization", WINFX_KEY, MSFINAL_KEY }
+			{ "System.Xml.Serialization", WINFX_KEY, ECMA_KEY }
 		};
 
 		static bool HasPclRuntimeRemapping(ParsedAssemblyName name1, ParsedAssemblyName name2)
