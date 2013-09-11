@@ -571,12 +571,11 @@ namespace IKVM.Reflection.Emit
 			{
 				layout = (LayoutKind)val;
 			}
-			StructLayoutAttribute attr = new StructLayoutAttribute(layout);
-			attr.Pack = (int?)customBuilder.GetFieldValue("Pack") ?? 0;
-			attr.Size = (int?)customBuilder.GetFieldValue("Size") ?? 0;
-			attr.CharSet = customBuilder.GetFieldValue<CharSet>("CharSet") ?? CharSet.None;
+			pack = (short)((int?)customBuilder.GetFieldValue("Pack") ?? 0);
+			size = (int?)customBuilder.GetFieldValue("Size") ?? 0;
+			CharSet charSet = customBuilder.GetFieldValue<CharSet>("CharSet") ?? CharSet.None;
 			attribs &= ~TypeAttributes.LayoutMask;
-			switch (attr.Value)
+			switch (layout)
 			{
 				case LayoutKind.Auto:
 					attribs |= TypeAttributes.AutoLayout;
@@ -589,7 +588,7 @@ namespace IKVM.Reflection.Emit
 					break;
 			}
 			attribs &= ~TypeAttributes.StringFormatMask;
-			switch (attr.CharSet)
+			switch (charSet)
 			{
 				case CharSet.None:
 				case CharSet.Ansi:
@@ -602,8 +601,6 @@ namespace IKVM.Reflection.Emit
 					attribs |= TypeAttributes.UnicodeClass;
 					break;
 			}
-			pack = (short)attr.Pack;
-			size = attr.Size;
 			hasLayout = pack != 0 || size != 0;
 		}
 
@@ -868,45 +865,6 @@ namespace IKVM.Reflection.Emit
 				}
 			}
 			return methods;
-		}
-
-		public override StructLayoutAttribute StructLayoutAttribute
-		{
-			get
-			{
-				LayoutKind layout;
-				switch (attribs & TypeAttributes.LayoutMask)
-				{
-					case TypeAttributes.ExplicitLayout:
-						layout = LayoutKind.Explicit;
-						break;
-					case TypeAttributes.SequentialLayout:
-						layout = LayoutKind.Sequential;
-						break;
-					default:
-						layout = LayoutKind.Auto;
-						break;
-				}
-				StructLayoutAttribute attr = new StructLayoutAttribute(layout);
-				attr.Pack = (ushort)pack;
-				attr.Size = size;
-				switch (attribs & TypeAttributes.StringFormatMask)
-				{
-					case TypeAttributes.AutoClass:
-						attr.CharSet = CharSet.Auto;
-						break;
-					case TypeAttributes.UnicodeClass:
-						attr.CharSet = CharSet.Unicode;
-						break;
-					case TypeAttributes.AnsiClass:
-						attr.CharSet = CharSet.Ansi;
-						break;
-					default:
-						attr.CharSet = CharSet.None;
-						break;
-				}
-				return attr;
-			}
 		}
 
 		public override Type DeclaringType
@@ -1194,9 +1152,9 @@ namespace IKVM.Reflection.Emit
 			get { return underlyingType.DeclaringType; }
 		}
 
-		public override StructLayoutAttribute StructLayoutAttribute
+		public override bool __GetLayout(out int packingSize, out int typeSize)
 		{
-			get { return underlyingType.StructLayoutAttribute; }
+			return underlyingType.__GetLayout(out packingSize, out typeSize);
 		}
 
 		public override Type[] GetGenericArguments()
