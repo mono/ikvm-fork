@@ -42,7 +42,6 @@ namespace IKVM.Reflection
 		private AssemblyNameFlags flags;
 		private AssemblyHashAlgorithm hashAlgorithm;
 		private AssemblyVersionCompatibility versionCompatibility = AssemblyVersionCompatibility.SameMachine;
-		private ProcessorArchitecture processorArchitecture;
 		private string codeBase;
 		internal byte[] hash;
 
@@ -70,7 +69,7 @@ namespace IKVM.Reflection
 			name = parsed.Name;
 			if (parsed.Culture != null)
 			{
-				if (parsed.Culture.Equals("neutral", StringComparison.InvariantCultureIgnoreCase))
+				if (parsed.Culture.Equals("neutral", StringComparison.OrdinalIgnoreCase))
 				{
 					culture = "";
 				}
@@ -90,7 +89,7 @@ namespace IKVM.Reflection
 			}
 			if (parsed.PublicKeyToken != null)
 			{
-				if (parsed.PublicKeyToken.Equals("null", StringComparison.InvariantCultureIgnoreCase))
+				if (parsed.PublicKeyToken.Equals("null", StringComparison.OrdinalIgnoreCase))
 				{
 					publicKeyToken = Empty<byte>.Array;
 				}
@@ -214,12 +213,11 @@ namespace IKVM.Reflection
 
 		public ProcessorArchitecture ProcessorArchitecture
 		{
-			get { return processorArchitecture; }
+			get { return (ProcessorArchitecture)(((int)flags & 0x70) >> 4); }
 			set
 			{
 				if (value >= ProcessorArchitecture.None && value <= ProcessorArchitecture.Arm)
 				{
-					processorArchitecture = value;
 					flags = (flags & ~(AssemblyNameFlags)0x70) | (AssemblyNameFlags)((int)value << 4);
 				}
 			}
@@ -449,7 +447,7 @@ namespace IKVM.Reflection
 				path = Path.GetFullPath(path);
 				using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
 				{
-					ModuleReader module = new ModuleReader(null, null, fs, path);
+					ModuleReader module = new ModuleReader(null, null, fs, path, false);
 					if (module.Assembly == null)
 					{
 						throw new BadImageFormatException("Module does not contain a manifest");
