@@ -169,7 +169,7 @@ namespace IKVM.Internal
 
 		private bool IsPublicOrProtectedMemberAccessible(TypeWrapper caller, TypeWrapper instance)
 		{
-			if (IsPublic || (IsProtected && caller.IsSubTypeOf(DeclaringType) && (IsStatic || instance.IsSubTypeOf(caller))))
+			if (IsPublic || (IsProtected && caller.IsSubTypeOf(DeclaringType) && (IsStatic || instance.IsUnloadable || instance.IsSubTypeOf(caller))))
 			{
 				return DeclaringType.IsPublic || InPracticeInternalsVisibleTo(caller);
 			}
@@ -188,7 +188,7 @@ namespace IKVM.Internal
 			}
 #endif
 #if CLASSGC
-			if (DeclaringType is DynamicTypeWrapper)
+			if (DeclaringType.IsDynamic)
 			{
 				// if we are dynamic, we can just become friends with the caller
 				DeclaringType.GetClassLoader().GetTypeWrapperFactory().AddInternalsVisibleTo(caller.TypeAsTBD.Assembly);
@@ -353,17 +353,9 @@ namespace IKVM.Internal
 		}
 	}
 
-	interface ICustomInvoke
-	{
-#if !STATIC_COMPILER && !FIRST_PASS && !STUB_GENERATOR
-		object Invoke(object obj, object[] args);
-#endif
-	}
-
 	abstract class MethodWrapper : MemberWrapper
 	{
 #if !STATIC_COMPILER && !FIRST_PASS && !STUB_GENERATOR
-		private static Dictionary<MethodWrapper, sun.reflect.MethodAccessor> invokenonvirtualCache;
 		private volatile object reflectionMethod;
 #endif
 		internal static readonly MethodWrapper[] EmptyArray  = new MethodWrapper[0];
@@ -372,7 +364,7 @@ namespace IKVM.Internal
 		private TypeWrapper returnTypeWrapper;
 		private TypeWrapper[] parameterTypeWrappers;
 
-#if !STUB_GENERATOR
+#if EMITTERS
 		internal virtual void EmitCall(CodeEmitter ilgen)
 		{
 			throw new InvalidOperationException();
@@ -397,7 +389,7 @@ namespace IKVM.Internal
 		{
 			return Intrinsics.Emit(context);
 		}
-#endif // STUB_GENERATOR
+#endif // EMITTERS
 
 		internal virtual bool IsDynamicOnly
 		{
@@ -571,19 +563,30 @@ namespace IKVM.Internal
 		}
 #endif // !FIRST_PASS
 
-		internal static MethodWrapper FromMethodOrConstructor(object methodOrConstructor)
+		internal static MethodWrapper FromMethod(java.lang.reflect.Method method)
 		{
 #if FIRST_PASS
 			return null;
 #else
-			java.lang.reflect.Method method = methodOrConstructor as java.lang.reflect.Method;
-			if (method != null)
-			{
-				return TypeWrapper.FromClass(method.getDeclaringClass()).GetMethods()[method._slot()];
-			}
-			java.lang.reflect.Constructor constructor = (java.lang.reflect.Constructor)methodOrConstructor;
+			return TypeWrapper.FromClass(method.getDeclaringClass()).GetMethods()[method._slot()];
+#endif
+		}
+
+		internal static MethodWrapper FromConstructor(java.lang.reflect.Constructor constructor)
+		{
+#if FIRST_PASS
+			return null;
+#else
 			return TypeWrapper.FromClass(constructor.getDeclaringClass()).GetMethods()[constructor._slot()];
 #endif
+		}
+		
+		internal static MethodWrapper FromMethodOrConstructor(object methodOrConstructor)
+		{
+			java.lang.reflect.Method method = methodOrConstructor as java.lang.reflect.Method;
+			return method != null
+				? FromMethod(method)
+				: FromConstructor((java.lang.reflect.Constructor)methodOrConstructor);
 		}
 #endif // !STATIC_COMPILER && !STUB_GENERATOR
 
@@ -731,46 +734,6 @@ namespace IKVM.Internal
 			}
 		}
 
-		// this returns the Java method's attributes in .NET terms (e.g. used to create stubs for this method)
-		internal MethodAttributes GetMethodAttributes()
-		{
-			MethodAttributes attribs = MethodAttributes.HideBySig;
-			if(IsStatic)
-			{
-				attribs |= MethodAttributes.Static;
-			}
-			if(IsPublic)
-			{
-				attribs |= MethodAttributes.Public;
-			}
-			else if(IsPrivate)
-			{
-				attribs |= MethodAttributes.Private;
-			}
-			else if(IsProtected)
-			{
-				attribs |= MethodAttributes.FamORAssem;
-			}
-			else
-			{
-				attribs |= MethodAttributes.Family;
-			}
-			// constructors aren't virtual
-			if(!IsStatic && !IsPrivate && Name != "<init>")
-			{
-				attribs |= MethodAttributes.Virtual;
-			}
-			if(IsFinal)
-			{
-				attribs |= MethodAttributes.Final;
-			}
-			if(IsAbstract)
-			{
-				attribs |= MethodAttributes.Abstract;
-			}
-			return attribs;
-		}
-
 		internal bool IsAbstract
 		{
 			get
@@ -779,214 +742,103 @@ namespace IKVM.Internal
 			}
 		}
 
-#if !STATIC_COMPILER && !STUB_GENERATOR
-		[HideFromJava]
-		internal object InvokeJNI(object obj, object[] args, bool nonVirtual, object callerID)
+		internal bool RequiresNonVirtualDispatcher
 		{
-#if FIRST_PASS
-			return null;
-#else
-			if (IsConstructor)
+			get
 			{
-				java.lang.reflect.Constructor cons = (java.lang.reflect.Constructor)ToMethodOrConstructor(false);
-				if (obj == null)
-				{
-					sun.reflect.ConstructorAccessor acc = cons.getConstructorAccessor();
-					if (acc == null)
-					{
-						acc = (sun.reflect.ConstructorAccessor)IKVM.NativeCode.sun.reflect.ReflectionFactory.newConstructorAccessor0(null, cons);
-						cons.setConstructorAccessor(acc);
-					}
-					return acc.newInstance(args);
-				}
-				else if (!ReflectUtil.IsConstructor(method))
-				{
-					Debug.Assert(method.IsStatic);
-					// we're dealing with a constructor on a remapped type, if obj is supplied, it means
-					// that we should call the constructor on an already existing instance, but that isn't
-					// possible with remapped types
-					// the type of this exception is a bit random (note that this can only happen through JNI reflection)
-					throw new java.lang.IncompatibleClassChangeError(string.Format("Remapped type {0} doesn't support constructor invocation on an existing instance", DeclaringType.Name));
-				}
-				else if (!method.DeclaringType.IsInstanceOfType(obj))
-				{
-					// we're trying to initialize an existing instance of a remapped type
-					throw new NotSupportedException("Unable to partially construct object of type " + obj.GetType().FullName + " to type " + method.DeclaringType.FullName);
-				}
-				else
-				{
-					try
-					{
-						ResolveMethod();
-						InvokeArgsProcessor proc = new InvokeArgsProcessor(this, method, obj, UnboxArgs(args), (ikvm.@internal.CallerID)callerID);
-						object o = method.Invoke(proc.GetObj(), proc.GetArgs());
-						TypeWrapper retType = this.ReturnType;
-						if (!retType.IsUnloadable && retType.IsGhost)
-						{
-							o = retType.GhostRefField.GetValue(o);
-						}
-						return o;
-					}
-					catch (ArgumentException x1)
-					{
-						throw new java.lang.IllegalArgumentException(x1.Message);
-					}
-					catch (TargetInvocationException x)
-					{
-						throw new java.lang.reflect.InvocationTargetException(ikvm.runtime.Util.mapException(x.InnerException));
-					}
-				}
+				return !IsConstructor
+					&& !IsStatic
+					&& !IsPrivate
+					&& !IsAbstract
+					&& !IsFinal
+					&& !DeclaringType.IsFinal;
 			}
-			else if (nonVirtual
-				&& !this.IsStatic
-				&& !this.IsPrivate
-				&& !this.IsAbstract
-				&& !this.IsFinal
-				&& !this.DeclaringType.IsFinal)
+		}
+
+#if !STATIC_COMPILER && !STUB_GENERATOR
+		internal Type GetDelegateType()
+		{
+			TypeWrapper[] paramTypes = GetParameters();
+			if (paramTypes.Length > MethodHandleUtil.MaxArity)
 			{
-				if (this.DeclaringType.IsRemapped && !this.DeclaringType.TypeAsBaseType.IsInstanceOfType(obj))
+				Type type = DeclaringType.TypeAsBaseType.Assembly.GetType(
+					ReturnType == PrimitiveTypeWrapper.VOID ? "__<>NVIV`" + paramTypes.Length : "__<>NVI`" + (paramTypes.Length + 1));
+				if (type == null)
 				{
-					ResolveMethod();
-					return InvokeNonvirtualRemapped(obj, UnboxArgs(args));
+					type = DeclaringType.GetClassLoader().GetTypeWrapperFactory().DefineDelegate(paramTypes.Length, ReturnType == PrimitiveTypeWrapper.VOID);
 				}
-				else
+				Type[] types = new Type[paramTypes.Length + (ReturnType == PrimitiveTypeWrapper.VOID ? 0 : 1)];
+				for (int i = 0; i < paramTypes.Length; i++)
 				{
-					if (invokenonvirtualCache == null)
-					{
-						Interlocked.CompareExchange(ref invokenonvirtualCache, new Dictionary<MethodWrapper, sun.reflect.MethodAccessor>(), null);
-					}
-					sun.reflect.MethodAccessor acc;
-					lock (invokenonvirtualCache)
-					{
-						if (!invokenonvirtualCache.TryGetValue(this, out acc))
-						{
-							acc = new IKVM.NativeCode.sun.reflect.ReflectionFactory.FastMethodAccessorImpl((java.lang.reflect.Method)ToMethodOrConstructor(false), true);
-							invokenonvirtualCache.Add(this, acc);
-						}
-					}
-					object val = acc.invoke(obj, args, (ikvm.@internal.CallerID)callerID);
-					if (this.ReturnType.IsPrimitive && this.ReturnType != PrimitiveTypeWrapper.VOID)
-					{
-						val = JVM.Unbox(val);
-					}
-					return val;
+					types[i] = paramTypes[i].TypeAsSignatureType;
 				}
+				if (ReturnType != PrimitiveTypeWrapper.VOID)
+				{
+					types[types.Length - 1] = ReturnType.TypeAsSignatureType;
+				}
+				return type.MakeGenericType(types);
 			}
-			else
+			return MethodHandleUtil.CreateDelegateType(paramTypes, ReturnType);
+		}
+
+		internal void ResolveMethod()
+		{
+#if !FIRST_PASS
+			// if we've still got the builder object, we need to replace it with the real thing before we can call it
+			MethodBuilder mb = method as MethodBuilder;
+			if (mb != null)
 			{
-				java.lang.reflect.Method method = (java.lang.reflect.Method)ToMethodOrConstructor(false);
-				sun.reflect.MethodAccessor acc = method.getMethodAccessor();
-				if (acc == null)
-				{
-					acc = (sun.reflect.MethodAccessor)IKVM.NativeCode.sun.reflect.ReflectionFactory.newMethodAccessor(null, method);
-					method.setMethodAccessor(acc);
-				}
-				object val = acc.invoke(obj, args, (ikvm.@internal.CallerID)callerID);
-				if (this.ReturnType.IsPrimitive && this.ReturnType != PrimitiveTypeWrapper.VOID)
-				{
-					val = JVM.Unbox(val);
-				}
-				return val;
+				method = mb.Module.ResolveMethod(mb.GetToken().Token);
 			}
 #endif
 		}
 
-		private object[] UnboxArgs(object[] args)
-		{
-			TypeWrapper[] paramTypes = GetParameters();
-			for (int i = 0; i < paramTypes.Length; i++)
-			{
-				if (paramTypes[i].IsPrimitive)
-				{
-					args[i] = JVM.Unbox(args[i]);
-				}
-			}
-			return args;
-		}
-#endif // !STATIC_COMPILER && !STUB_GENERATOR
-
-#if !STATIC_COMPILER && !FIRST_PASS && !STUB_GENERATOR
-		internal void ResolveMethod()
-		{
-			// if we've still got the builder object, we need to replace it with the real thing before we can call it
-			if(method is MethodBuilder)
-			{
-				method = method.Module.ResolveMethod(((MethodBuilder)method).GetToken().Token);
-			}
-		}
-
 		[HideFromJava]
-		protected virtual object InvokeNonvirtualRemapped(object obj, object[] args)
+		internal virtual object InvokeNonvirtualRemapped(object obj, object[] args)
 		{
 			throw new InvalidOperationException();
 		}
 
-		private struct InvokeArgsProcessor
+		[HideFromJava]
+		protected static object InvokeAndUnwrapException(MethodBase mb, object obj, object[] args)
 		{
-			private object obj;
-			private object[] args;
-
-			internal InvokeArgsProcessor(MethodWrapper mw, MethodBase method, object original_obj, object[] original_args, ikvm.@internal.CallerID callerID)
+#if FIRST_PASS
+			return null;
+#else
+			try
 			{
-				TypeWrapper[] argTypes = mw.GetParameters();
-
-				if(!mw.IsStatic && method.IsStatic && mw.Name != "<init>")
-				{
-					// we've been redirected to a static method, so we have to copy the 'obj' into the args
-					object[] nargs = new object[original_args.Length + 1];
-					nargs[0] = original_obj;
-					original_args.CopyTo(nargs, 1);
-					this.obj = null;
-					this.args = nargs;
-					for(int i = 0; i < argTypes.Length; i++)
-					{
-						if(!argTypes[i].IsUnloadable && argTypes[i].IsGhost)
-						{
-							object v = Activator.CreateInstance(argTypes[i].TypeAsSignatureType);
-							argTypes[i].GhostRefField.SetValue(v, args[i + 1]);
-							args[i + 1] = v;
-						}
-					}
-				}
-				else
-				{
-					this.obj = original_obj;
-					this.args = original_args;
-					for(int i = 0; i < argTypes.Length; i++)
-					{
-						if(!argTypes[i].IsUnloadable && argTypes[i].IsGhost)
-						{
-							if(this.args == original_args)
-							{
-								this.args = (object[])args.Clone();
-							}
-							object v = Activator.CreateInstance(argTypes[i].TypeAsSignatureType);
-							argTypes[i].GhostRefField.SetValue(v, args[i]);
-							this.args[i] = v;
-						}
-					}
-				}
-
-				if(mw.HasCallerID)
-				{
-					object[] nargs = new object[args.Length + 1];
-					Array.Copy(args, nargs, args.Length);
-					nargs[args.Length] = callerID;
-					args = nargs;
-				}
+				return mb.Invoke(obj, args);
 			}
-
-			internal object GetObj()
+			catch (TargetInvocationException x)
 			{
-				return obj;
+				throw ikvm.runtime.Util.mapException(x.InnerException);
 			}
-
-			internal object[] GetArgs()
-			{
-				return args;
-			}
+#endif
 		}
-#endif // !STATIC_COMPILER && !FIRST_PASS && !STUB_GENERATOR
+
+		[HideFromJava]
+		internal virtual object Invoke(object obj, object[] args)
+		{
+			return InvokeAndUnwrapException(method, obj, args);
+		}
+
+		[HideFromJava]
+		internal virtual object CreateInstance(object[] args)
+		{
+#if FIRST_PASS
+			return null;
+#else
+			try
+			{
+				return ((ConstructorInfo)method).Invoke(args);
+			}
+			catch (TargetInvocationException x)
+			{
+				throw ikvm.runtime.Util.mapException(x.InnerException);
+			}
+#endif
+		}
+#endif // !STATIC_COMPILER && !STUB_GENERATOR
 
 		internal static OpCode SimpleOpCodeToOpCode(SimpleOpCode opc)
 		{
@@ -1037,7 +889,7 @@ namespace IKVM.Internal
 		{
 		}
 
-#if !STUB_GENERATOR
+#if EMITTERS
 		internal sealed override void EmitCall(CodeEmitter ilgen)
 		{
 			AssertLinked();
@@ -1083,7 +935,7 @@ namespace IKVM.Internal
 		{
 			throw new InvalidOperationException();
 		}
-#endif // STUB_GENERATOR
+#endif // EMITTERS
 	}
 
 	enum SimpleOpCode : byte
@@ -1105,7 +957,7 @@ namespace IKVM.Internal
 			this.callvirt = callvirt;
 		}
 
-#if !STUB_GENERATOR
+#if EMITTERS
 		internal override void EmitCall(CodeEmitter ilgen)
 		{
 			ilgen.Emit(SimpleOpCodeToOpCode(call), GetMethod());
@@ -1115,7 +967,7 @@ namespace IKVM.Internal
 		{
 			ilgen.Emit(SimpleOpCodeToOpCode(callvirt), GetMethod());
 		}
-#endif // !STUB_GENERATOR
+#endif // EMITTERS
 	}
 
 	sealed class TypicalMethodWrapper : SmartMethodWrapper
@@ -1125,7 +977,7 @@ namespace IKVM.Internal
 		{
 		}
 
-#if !STUB_GENERATOR
+#if EMITTERS
 		protected override void CallImpl(CodeEmitter ilgen)
 		{
 			ilgen.Emit(OpCodes.Call, GetMethod());
@@ -1140,7 +992,117 @@ namespace IKVM.Internal
 		{
 			ilgen.Emit(OpCodes.Newobj, GetMethod());
 		}
-#endif // !STUB_GENERATOR
+#endif // EMITTERS
+	}
+
+	abstract class MirandaMethodWrapper : SmartMethodWrapper
+	{
+		private readonly MethodWrapper ifmethod;
+
+		private MirandaMethodWrapper(TypeWrapper declaringType, MethodWrapper ifmethod, Modifiers modifiers)
+			: base(declaringType, ifmethod.Name, ifmethod.Signature, null, null, null, modifiers, MemberFlags.HideFromReflection | MemberFlags.MirandaMethod)
+		{
+			this.ifmethod = ifmethod;
+		}
+
+		private sealed class AbstractMirandaMethodWrapper : MirandaMethodWrapper
+		{
+			internal AbstractMirandaMethodWrapper(TypeWrapper declaringType, MethodWrapper ifmethod)
+				: base(declaringType, ifmethod, Modifiers.Public | Modifiers.Abstract)
+			{
+			}
+		}
+
+		private sealed class DefaultMirandaMethodWrapper : MirandaMethodWrapper
+		{
+			internal DefaultMirandaMethodWrapper(TypeWrapper declaringType, MethodWrapper ifmethod)
+				: base(declaringType, ifmethod, Modifiers.Public)
+			{
+			}
+		}
+
+		private sealed class ErrorMirandaMethodWrapper : MirandaMethodWrapper
+		{
+			private string error;
+
+			internal ErrorMirandaMethodWrapper(TypeWrapper declaringType, MethodWrapper ifmethod, string error)
+				: base(declaringType, ifmethod, Modifiers.Public)
+			{
+				this.error = error;
+			}
+
+			protected override MirandaMethodWrapper AddConflictError(MethodWrapper mw)
+			{
+				error += " " + mw.DeclaringType.Name + "." + mw.Name;
+				return this;
+			}
+
+			internal override string Error
+			{
+				get { return error; }
+			}
+		}
+
+		internal static MirandaMethodWrapper Create(TypeWrapper declaringType, MethodWrapper ifmethod)
+		{
+			return ifmethod.IsAbstract
+				? (MirandaMethodWrapper)new AbstractMirandaMethodWrapper(declaringType, ifmethod)
+				: (MirandaMethodWrapper)new DefaultMirandaMethodWrapper(declaringType, ifmethod);
+		}
+
+		internal MirandaMethodWrapper Update(MethodWrapper mw)
+		{
+			if (ifmethod == mw)
+			{
+				// an interface can be implemented multiple times
+				return this;
+			}
+			else if (mw.DeclaringType.ImplementsInterface(ifmethod.DeclaringType))
+			{
+				return Create(DeclaringType, mw);
+			}
+			else if (!ifmethod.IsAbstract && !mw.IsAbstract)
+			{
+				return AddConflictError(mw);
+			}
+			else if (!ifmethod.IsAbstract && mw.IsAbstract)
+			{
+				return new ErrorMirandaMethodWrapper(DeclaringType, mw, DeclaringType.Name + "." + Name + Signature);
+			}
+			else
+			{
+				return this;
+			}
+		}
+
+		protected virtual MirandaMethodWrapper AddConflictError(MethodWrapper mw)
+		{
+			return new ErrorMirandaMethodWrapper(DeclaringType, ifmethod, "Conflicting default methods:")
+				.AddConflictError(ifmethod)
+				.AddConflictError(mw);
+		}
+
+		internal MethodWrapper BaseMethod
+		{
+			get { return ifmethod; }
+		}
+
+		internal virtual string Error
+		{
+			get { return null; }
+		}
+
+#if EMITTERS
+		protected override void CallImpl(CodeEmitter ilgen)
+		{
+			ilgen.Emit(OpCodes.Call, GetMethod());
+		}
+
+		protected override void CallvirtImpl(CodeEmitter ilgen)
+		{
+			ilgen.Emit(OpCodes.Callvirt, GetMethod());
+		}
+#endif // EMITTERS
 	}
 
 	sealed class GhostMethodWrapper : SmartMethodWrapper
@@ -1167,11 +1129,20 @@ namespace IKVM.Internal
 			}
 		}
 
-#if !STUB_GENERATOR
+#if EMITTERS
 		protected override void CallvirtImpl(CodeEmitter ilgen)
 		{
 			ResolveGhostMethod();
 			ilgen.Emit(OpCodes.Call, ghostMethod);
+		}
+#endif
+
+#if !STATIC_COMPILER && !STUB_GENERATOR && !FIRST_PASS
+		[HideFromJava]
+		internal override object Invoke(object obj, object[] args)
+		{
+			ResolveGhostMethod();
+			return InvokeAndUnwrapException(ghostMethod, DeclaringType.GhostWrap(obj), args);
 		}
 #endif
 	}
@@ -1188,7 +1159,7 @@ namespace IKVM.Internal
 			this.stubNonVirtual = stubNonVirtual;
 		}
 
-#if !STUB_GENERATOR
+#if EMITTERS
 		protected override void CallImpl(CodeEmitter ilgen)
 		{
 			ilgen.Emit(OpCodes.Call, stubNonVirtual);
@@ -1198,7 +1169,7 @@ namespace IKVM.Internal
 		{
 			ilgen.Emit(OpCodes.Callvirt, stubVirtual);
 		}
-#endif // !STUB_GENERATOR
+#endif // EMITTERS
 	}
 
 	sealed class AccessStubConstructorMethodWrapper : SmartMethodWrapper
@@ -1211,7 +1182,7 @@ namespace IKVM.Internal
 			this.stub = stub;
 		}
 
-#if !STUB_GENERATOR
+#if EMITTERS
 		protected override void CallImpl(CodeEmitter ilgen)
 		{
 			ilgen.Emit(OpCodes.Call, stub);
@@ -1221,7 +1192,7 @@ namespace IKVM.Internal
 		{
 			ilgen.Emit(OpCodes.Newobj, stub);
 		}
-#endif // !STUB_GENERATOR
+#endif // EMITTERS
 	}
 
 	abstract class FieldWrapper : MemberWrapper
@@ -1248,7 +1219,7 @@ namespace IKVM.Internal
 				&& !DeclaringType.IsInterface
 				&& (IsPublic || (IsProtected && !DeclaringType.IsFinal))
 				&& !DeclaringType.GetClassLoader().StrictFinalFieldSemantics
-				&& DeclaringType is DynamicTypeWrapper
+				&& DeclaringType.IsDynamic
 				&& !(this is ConstantFieldWrapper)
 				&& !(this is DynamicPropertyFieldWrapper))
 			{
@@ -1291,48 +1262,24 @@ namespace IKVM.Internal
 		}
 
 #if !STATIC_COMPILER && !STUB_GENERATOR
-		// NOTE used (thru IKVM.Runtime.Util.GetFieldConstantValue) by ikvmstub to find out if the
-		// field is a constant (and if it is, to get its value)
-		internal object GetConstant()
-		{
-			AssertLinked();
-			// only primitives and string can be literals in Java (because the other "primitives" (like uint),
-			// are treated as NonPrimitiveValueTypes)
-			if(field != null && field.IsLiteral && (fieldType.IsPrimitive || fieldType == CoreClasses.java.lang.String.Wrapper))
-			{
-				object val = field.GetRawConstantValue();
-				if(field.FieldType.IsEnum)
-				{
-					val = EnumHelper.GetPrimitiveValue(EnumHelper.GetUnderlyingType(field.FieldType), val);
-				}
-				if(fieldType.IsPrimitive)
-				{
-					return JVM.Box(val);
-				}
-				return val;
-			}
-			return null;
-		}
-
-		internal static FieldWrapper FromField(object field)
+		internal static FieldWrapper FromField(java.lang.reflect.Field field)
 		{
 #if FIRST_PASS
 			return null;
 #else
-			java.lang.reflect.Field f = (java.lang.reflect.Field)field;
-			int slot = f._slot();
+			int slot = field._slot();
 			if (slot == -1)
 			{
 				// it's a Field created by Unsafe.objectFieldOffset(Class,String) so we must resolve based on the name
-				foreach (FieldWrapper fw in TypeWrapper.FromClass(f.getDeclaringClass()).GetFields())
+				foreach (FieldWrapper fw in TypeWrapper.FromClass(field.getDeclaringClass()).GetFields())
 				{
-					if (fw.Name == f.getName())
+					if (fw.Name == field.getName())
 					{
 						return fw;
 					}
 				}
 			}
-			return TypeWrapper.FromClass(f.getDeclaringClass()).GetFields()[slot];
+			return TypeWrapper.FromClass(field.getDeclaringClass()).GetFields()[slot];
 #endif
 		}
 
@@ -1397,7 +1344,7 @@ namespace IKVM.Internal
 			}
 		}
 
-#if !STUB_GENERATOR
+#if EMITTERS
 		internal void EmitGet(CodeEmitter ilgen)
 		{
 			AssertLinked();
@@ -1413,7 +1360,7 @@ namespace IKVM.Internal
 		}
 
 		protected abstract void EmitSetImpl(CodeEmitter ilgen);
-#endif // !STUB_GENERATOR
+#endif // EMITTERS
 
 
 #if STATIC_COMPILER
@@ -1422,7 +1369,7 @@ namespace IKVM.Internal
 			get { return fieldType != null; }
 		}
 #endif
-		
+
 		internal void Link()
 		{
 			lock(this)
@@ -1485,7 +1432,7 @@ namespace IKVM.Internal
 			FieldBuilder fb = field as FieldBuilder;
 			if(fb != null)
 			{
-				field = field.Module.ResolveField(fb.GetToken().Token);
+				field = fb.Module.ResolveField(fb.GetToken().Token);
 			}
 		}
 
@@ -1496,11 +1443,16 @@ namespace IKVM.Internal
 #else
 			if (jniAccessor == null)
 			{
-				Interlocked.CompareExchange(ref jniAccessor, IKVM.NativeCode.sun.reflect.ReflectionFactory.NewFieldAccessorJNI(this), null);
+				Interlocked.CompareExchange(ref jniAccessor, Java_sun_reflect_ReflectionFactory.NewFieldAccessorJNI(this), null);
 			}
 			return jniAccessor;
 #endif
 		}
+
+#if !FIRST_PASS
+		internal abstract object GetValue(object obj);
+		internal abstract void SetValue(object obj, object value);
+#endif
 #endif // !STATIC_COMPILER && !STUB_GENERATOR
 	}
 
@@ -1512,7 +1464,7 @@ namespace IKVM.Internal
 			Debug.Assert(!(fieldType == PrimitiveTypeWrapper.DOUBLE || fieldType == PrimitiveTypeWrapper.LONG) || !IsVolatile);
 		}
 
-#if !STUB_GENERATOR
+#if EMITTERS
 		protected override void EmitGetImpl(CodeEmitter ilgen)
 		{
 			if(!IsStatic && DeclaringType.IsNonPrimitiveValueType)
@@ -1546,7 +1498,19 @@ namespace IKVM.Internal
 				ilgen.EmitMemoryBarrier();
 			}
 		}
-#endif // !STUB_GENERATOR
+#endif // EMITTERS
+
+#if !STATIC_COMPILER && !STUB_GENERATOR && !FIRST_PASS
+		internal override object GetValue(object obj)
+		{
+			return GetField().GetValue(obj);
+		}
+
+		internal override void SetValue(object obj, object value)
+		{
+			GetField().SetValue(obj, value);
+		}
+#endif // !STATIC_COMPILER && !STUB_GENERATOR && !FIRST_PASS
 	}
 
 	sealed class VolatileLongDoubleFieldWrapper : FieldWrapper
@@ -1558,7 +1522,7 @@ namespace IKVM.Internal
 			Debug.Assert(sig == "J" || sig == "D");
 		}
 
-#if !STUB_GENERATOR
+#if EMITTERS
 		protected override void EmitGetImpl(CodeEmitter ilgen)
 		{
 			FieldInfo fi = GetField();
@@ -1613,7 +1577,37 @@ namespace IKVM.Internal
 				ilgen.Emit(OpCodes.Call, ByteCodeHelperMethods.volatileWriteLong);
 			}
 		}
-#endif // !STUB_GENERATOR
+#endif // EMITTERS
+
+#if !STATIC_COMPILER && !STUB_GENERATOR && !FIRST_PASS
+#if NO_REF_EMIT
+		internal static readonly object lockObject = new object();
+#endif
+
+		internal override object GetValue(object obj)
+		{
+#if NO_REF_EMIT
+			lock (lockObject)
+			{
+				return GetField().GetValue(obj);
+			}
+#else
+			throw new InvalidOperationException();
+#endif
+		}
+
+		internal override void SetValue(object obj, object value)
+		{
+#if NO_REF_EMIT
+			lock (lockObject)
+			{
+				GetField().SetValue(obj, value);
+			}
+#else
+			throw new InvalidOperationException();
+#endif
+		}
+#endif // !STATIC_COMPILER && !STUB_GENERATOR && !FIRST_PASS
 	}
 
 #if !STUB_GENERATOR
@@ -1690,6 +1684,7 @@ namespace IKVM.Internal
 #endif
 		}
 
+#if EMITTERS
 		protected override void EmitGetImpl(CodeEmitter ilgen)
 		{
 			if(getter == null)
@@ -1762,6 +1757,27 @@ namespace IKVM.Internal
 				ilgen.Emit(OpCodes.Pop);
 			}
 		}
+#endif // EMITTERS
+
+#if !STATIC_COMPILER && !FIRST_PASS
+		internal override object GetValue(object obj)
+		{
+			if (getter == null)
+			{
+				throw new java.lang.NoSuchMethodError();
+			}
+			return getter.Invoke(obj, new object[0]);
+		}
+
+		internal override void SetValue(object obj, object value)
+		{
+			if (setter == null)
+			{
+				throw new java.lang.NoSuchMethodError();
+			}
+			setter.Invoke(obj, new object[] { value });
+		}
+#endif
 	}
 #endif // !STUB_GENERATOR
 
@@ -1776,7 +1792,7 @@ namespace IKVM.Internal
 			this.property = property;
 		}
 
-#if !STUB_GENERATOR
+#if EMITTERS
 		protected override void EmitGetImpl(CodeEmitter ilgen)
 		{
 			MethodInfo getter = property.GetGetMethod(true);
@@ -1821,7 +1837,29 @@ namespace IKVM.Internal
 				ilgen.Emit(OpCodes.Callvirt, setter);
 			}
 		}
-#endif // !STUB_GENERATOR
+#endif // EMITTERS
+
+#if !STATIC_COMPILER && !STUB_GENERATOR && !FIRST_PASS
+		internal override object GetValue(object obj)
+		{
+			MethodInfo getter = property.GetGetMethod(true);
+			if (getter == null)
+			{
+				throw new java.lang.NoSuchMethodError();
+			}
+			return getter.Invoke(obj, new object[0]);
+		}
+
+		internal override void SetValue(object obj, object value)
+		{
+			MethodInfo setter = property.GetSetMethod(true);
+			if (setter == null)
+			{
+				throw new java.lang.NoSuchMethodError();
+			}
+			setter.Invoke(obj, new object[] { value });
+		}
+#endif
 
 		internal PropertyInfo GetProperty()
 		{
@@ -1842,7 +1880,7 @@ namespace IKVM.Internal
 			this.constant = constant;
 		}
 
-#if !STUB_GENERATOR
+#if EMITTERS
 		protected override void EmitGetImpl(CodeEmitter ilgen)
 		{
 			// Reading a field should trigger the cctor, but since we're inlining the value
@@ -1903,7 +1941,7 @@ namespace IKVM.Internal
 			// constant value is inlined), so we emulate that behavior by emitting a Pop
 			ilgen.Emit(OpCodes.Pop);
 		}
-#endif // !STUB_GENERATOR
+#endif // EMITTERS
 
 		internal object GetConstantValue()
 		{
@@ -1914,6 +1952,20 @@ namespace IKVM.Internal
 			}
 			return constant;
 		}
+
+#if !STUB_GENERATOR && !STATIC_COMPILER && !FIRST_PASS
+		internal override object GetValue(object obj)
+		{
+			FieldInfo field = GetField();
+			return FieldTypeWrapper.IsPrimitive || field == null
+				? GetConstantValue()
+				: field.GetValue(null);
+		}
+
+		internal override void SetValue(object obj, object value)
+		{
+		}
+#endif
 	}
 
 	sealed class CompiledAccessStubFieldWrapper : FieldWrapper
@@ -1956,7 +2008,7 @@ namespace IKVM.Internal
 			this.setter = property.GetSetMethod(true);
 		}
 
-#if !STUB_GENERATOR
+#if EMITTERS
 		protected override void EmitGetImpl(CodeEmitter ilgen)
 		{
 			ilgen.Emit(OpCodes.Call, getter);
@@ -1966,6 +2018,20 @@ namespace IKVM.Internal
 		{
 			ilgen.Emit(OpCodes.Call, setter);
 		}
-#endif // !STUB_GENERATOR
+#endif // EMITTERS
+
+#if !STATIC_COMPILER && !STUB_GENERATOR && !FIRST_PASS
+		internal override object GetValue(object obj)
+		{
+			// we can only be invoked on type 2 access stubs (because type 1 access stubs are HideFromReflection), so we know we have a field
+			return GetField().GetValue(obj);
+		}
+
+		internal override void SetValue(object obj, object value)
+		{
+			// we can only be invoked on type 2 access stubs (because type 1 access stubs are HideFromReflection), so we know we have a field
+			GetField().SetValue(obj, value);
+		}
+#endif // !STATIC_COMPILER && !STUB_GENERATOR && !FIRST_PASS
 	}
 }
