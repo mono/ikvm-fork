@@ -2381,7 +2381,11 @@ sealed class MethodAnalyzer
 		StackState stack = new StackState(state[index]);
 		NormalizedByteCode invoke = method.Instructions[index].NormalizedOpCode;
 		ClassFile.ConstantPoolItemMI cpi = GetMethodref(method.Instructions[index].Arg1);
-		if ((cpi is ClassFile.ConstantPoolItemInterfaceMethodref) != (invoke == NormalizedByteCode.__invokeinterface))
+		if (invoke == NormalizedByteCode.__invokestatic && classFile.MajorVersion >= 52)
+		{
+			// invokestatic may be used to invoke interface methods in Java 8
+		}
+		else if ((cpi is ClassFile.ConstantPoolItemInterfaceMethodref) != (invoke == NormalizedByteCode.__invokeinterface))
 		{
 			throw new VerifyError("Illegal constant pool index");
 		}
@@ -3185,6 +3189,11 @@ sealed class MethodAnalyzer
 											goto not_fault_block;
 										}
 									}
+									if (VerifierTypeWrapper.IsFaultBlockException(codeInfo.GetRawStackTypeWrapper(j, 0))
+										&& codeInfo.GetRawStackTypeWrapper(j, 0) != codeInfo.GetRawStackTypeWrapper(exceptions[i].handlerIndex, 0))
+									{
+										goto not_fault_block;
+									}
 									break;
 							}
 							if (j < current.startIndex || j >= current.endIndex)
@@ -3553,7 +3562,7 @@ sealed class MethodAnalyzer
 			}
 		}
 
-		if(cpi.GetClassType().IsUnloadable || (thisType != null && thisType.IsUnloadable))
+		if(cpi.GetClassType().IsUnloadable)
 		{
 			if(wrapper.GetClassLoader().DisableDynamicBinding)
 			{
@@ -3587,9 +3596,13 @@ sealed class MethodAnalyzer
 				}
 			}
 		}
-		else if(cpi.GetClassType().IsInterface != (invoke == NormalizedByteCode.__invokeinterface))
+		else if(invoke == NormalizedByteCode.__invokeinterface && !cpi.GetClassType().IsInterface)
 		{
 			SetHardError(wrapper.GetClassLoader(), ref instr, HardError.IncompatibleClassChangeError, "invokeinterface on non-interface");
+		}
+		else if(cpi.GetClassType().IsInterface && invoke != NormalizedByteCode.__invokeinterface && (invoke != NormalizedByteCode.__invokestatic || classFile.MajorVersion < 52))
+		{
+			SetHardError(wrapper.GetClassLoader(), ref instr, HardError.IncompatibleClassChangeError, "interface method must be invoked used invokeinterface or invokestatic");
 		}
 		else
 		{
@@ -3603,7 +3616,7 @@ sealed class MethodAnalyzer
 				}
 				else if(targetMethod.IsStatic == (invoke == NormalizedByteCode.__invokestatic))
 				{
-					if(targetMethod.IsAbstract && invoke == NormalizedByteCode.__invokespecial)
+					if(targetMethod.IsAbstract && invoke == NormalizedByteCode.__invokespecial && (targetMethod.GetMethod() == null || targetMethod.GetMethod().IsAbstract))
 					{
 						SetHardError(wrapper.GetClassLoader(), ref instr, HardError.AbstractMethodError, "{0}.{1}{2}", cpi.Class, cpi.Name, cpi.Signature);
 					}
@@ -3721,7 +3734,7 @@ sealed class MethodAnalyzer
 			// We're being called from IsSideEffectFreeStaticInitializer,
 			// no further checks are possible (nor needed).
 		}
-		else if(cpi.GetClassType().IsUnloadable || (thisType != null && thisType.IsUnloadable))
+		else if(cpi.GetClassType().IsUnloadable)
 		{
 			if(wrapper.GetClassLoader().DisableDynamicBinding)
 			{
