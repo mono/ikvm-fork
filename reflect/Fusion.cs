@@ -195,7 +195,7 @@ namespace IKVM.Reflection
 			{ "System.Core", SILVERLIGHT_KEY, ECMA_KEY },
 			// FIXME: MS uses MSFINAL_KEY for .NET 4.5
 			{ "System.Net", SILVERLIGHT_KEY, MSFINAL_KEY },
-			{ "System.Numerics", WINFX_KEY, MSFINAL_KEY },
+			{ "System.Numerics", WINFX_KEY, ECMA_KEY },
 			{ "System.Runtime.Serialization", SILVERLIGHT_KEY, ECMA_KEY },
 			{ "System.ServiceModel", WINFX_KEY, ECMA_KEY },
 			{ "System.ServiceModel.Web", SILVERLIGHT_KEY, WINFX_KEY },
