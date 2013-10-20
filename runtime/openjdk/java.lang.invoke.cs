@@ -119,7 +119,7 @@ static class Java_java_lang_invoke_DirectMethodHandle
 			MethodWrapper mw = tw.GetMethods()[index];
 			if (mw.IsDynamicOnly)
 			{
-				MethodHandleUtil.DynamicMethodBuilder dm = new MethodHandleUtil.DynamicMethodBuilder("CustomInvoke:" + mw.Name, type, (ICustomInvoke)mw);
+				MethodHandleUtil.DynamicMethodBuilder dm = new MethodHandleUtil.DynamicMethodBuilder("CustomInvoke:" + mw.Name, type, mw);
 				if (mw.IsStatic)
 				{
 					dm.LoadNull();
@@ -130,8 +130,8 @@ static class Java_java_lang_invoke_DirectMethodHandle
 					dm.Ldarg(0);
 					dm.BoxArgs(1);
 				}
-				dm.Callvirt(typeof(ICustomInvoke).GetMethod("Invoke"));
-				dm.Convert(typeof(object), type.returnType(), 0);
+				dm.Callvirt(typeof(MethodWrapper).GetMethod("Invoke", BindingFlags.Instance | BindingFlags.NonPublic));
+				dm.UnboxReturnValue();
 				dm.Ret();
 				return dm.CreateDelegate();
 			}
@@ -159,6 +159,7 @@ static class Java_java_lang_invoke_DirectMethodHandle
 			mw.ResolveMethod();
 			MethodInfo mi = mw.GetMethod() as MethodInfo;
 			if (mi != null
+				&& !mw.HasCallerID
 				&& !tw.IsRemapped
 				&& !tw.IsGhost
 				&& !tw.IsNonPrimitiveValueType
@@ -174,7 +175,8 @@ static class Java_java_lang_invoke_DirectMethodHandle
 			else
 			{
 				// slow path where we emit a DynamicMethod
-				MethodHandleUtil.DynamicMethodBuilder dm = new MethodHandleUtil.DynamicMethodBuilder(mw.DeclaringType.TypeAsBaseType, "DirectMethodHandle:" + mw.Name, type);
+				MethodHandleUtil.DynamicMethodBuilder dm = new MethodHandleUtil.DynamicMethodBuilder(mw.DeclaringType.TypeAsBaseType, "DirectMethodHandle:" + mw.Name, type,
+					mw.HasCallerID ? ikvm.@internal.CallerID.create(lookupClass) : null);
 				for (int i = 0, count = type.parameterCount(); i < count; i++)
 				{
 					if (i == 0 && !mw.IsStatic && (tw.IsGhost || tw.IsNonPrimitiveValueType))
@@ -185,6 +187,10 @@ static class Java_java_lang_invoke_DirectMethodHandle
 					{
 						dm.Ldarg(i);
 					}
+				}
+				if (mw.HasCallerID)
+				{
+					dm.LoadCallerID();
 				}
 				if (doDispatch && !mw.IsStatic)
 				{
@@ -343,8 +349,8 @@ static partial class MethodHandleUtil
 		private readonly MethodType type;
 		private readonly int firstArg;
 		private readonly Type delegateType;
-		private readonly object target;
-		private readonly object value;
+		private readonly object firstBoundValue;
+		private readonly object secondBoundValue;
 		private readonly Type container;
 		private readonly DynamicMethod dm;
 		private readonly CodeEmitter ilgen;
@@ -367,8 +373,8 @@ static partial class MethodHandleUtil
 		{
 			this.type = type;
 			this.delegateType = CreateDelegateType(type);
-			this.target = target;
-			this.value = value;
+			this.firstBoundValue = target;
+			this.secondBoundValue = value;
 			this.container = container;
 			MethodInfo mi = GetDelegateInvokeMethod(delegateType);
 			Type[] paramTypes;
@@ -405,8 +411,8 @@ static partial class MethodHandleUtil
 			}
 		}
 
-		internal DynamicMethodBuilder(Type owner, string name, MethodType type)
-			: this(name, type, null, null, null, owner)
+		internal DynamicMethodBuilder(Type owner, string name, MethodType type, ikvm.@internal.CallerID callerID)
+			: this(name, type, null, callerID, null, owner)
 		{
 		}
 
@@ -416,7 +422,7 @@ static partial class MethodHandleUtil
 			ilgen.Emit(OpCodes.Ldarg_0);
 		}
 
-		internal DynamicMethodBuilder(string name, MethodType type, ICustomInvoke target)
+		internal DynamicMethodBuilder(string name, MethodType type, MethodWrapper target)
 			: this(name, type, null, target, null, null)
 		{
 			ilgen.Emit(OpCodes.Ldarg_0);
@@ -541,7 +547,12 @@ static partial class MethodHandleUtil
 
 		internal void CallTarget()
 		{
-			EmitCallDelegateInvokeMethod(ilgen, target.GetType());
+			EmitCallDelegateInvokeMethod(ilgen, firstBoundValue.GetType());
+		}
+
+		internal void LoadCallerID()
+		{
+			ilgen.Emit(OpCodes.Ldarg_0);
 		}
 
 		internal void LoadValueAddress()
@@ -558,7 +569,7 @@ static partial class MethodHandleUtil
 
 		internal void CallValue()
 		{
-			EmitCallDelegateInvokeMethod(ilgen, value.GetType());
+			EmitCallDelegateInvokeMethod(ilgen, secondBoundValue.GetType());
 		}
 
 		internal void Ret()
@@ -571,7 +582,7 @@ static partial class MethodHandleUtil
 			ilgen.DoEmit();
 			return ValidateDelegate(firstArg == 0
 				? dm.CreateDelegate(delegateType)
-				: dm.CreateDelegate(delegateType, container == null ? target : Activator.CreateInstance(container, target, value)));
+				: dm.CreateDelegate(delegateType, container == null ? firstBoundValue : Activator.CreateInstance(container, firstBoundValue, secondBoundValue)));
 		}
 
 		internal AdapterMethodHandle CreateAdapter()
@@ -589,8 +600,38 @@ static partial class MethodHandleUtil
 				ilgen.Emit(OpCodes.Dup);
 				ilgen.EmitLdc_I4(i - start);
 				Ldarg(i);
-				Convert(type.parameterType(i), typeof(object), 0);
+				TypeWrapper tw = TypeWrapper.FromClass(type.parameterType(i));
+				if (tw.IsPrimitive || tw.IsGhost)
+				{
+					ilgen.Emit(OpCodes.Box, tw.TypeAsSignatureType);
+				}
+				else if (tw.IsNonPrimitiveValueType)
+				{
+					tw.EmitBox(ilgen);
+				}
 				ilgen.Emit(OpCodes.Stelem_Ref);
+			}
+		}
+
+		internal void UnboxReturnValue()
+		{
+			TypeWrapper tw = TypeWrapper.FromClass(type.returnType());
+			if (tw == PrimitiveTypeWrapper.VOID)
+			{
+				ilgen.Emit(OpCodes.Pop);
+			}
+			else if (tw.IsPrimitive || tw.IsGhost)
+			{
+				ilgen.Emit(OpCodes.Unbox, tw.TypeAsSignatureType);
+				ilgen.Emit(OpCodes.Ldobj, tw.TypeAsSignatureType);
+			}
+			else if (tw.IsNonPrimitiveValueType)
+			{
+				tw.EmitUnbox(ilgen);
+			}
+			else if (tw != CoreClasses.java.lang.Object.Wrapper)
+			{
+				tw.EmitCheckcast(ilgen);
 			}
 		}
 
@@ -1081,7 +1122,7 @@ static class Java_java_lang_invoke_MethodHandleNatives
 		}
 		else if (r is java.lang.reflect.Field)
 		{
-			FieldWrapper fw = FieldWrapper.FromField(r);
+			FieldWrapper fw = FieldWrapper.FromField((java.lang.reflect.Field)r);
 			int index = Array.IndexOf(fw.DeclaringType.GetFields(), fw);
 			if (index != -1)
 			{
