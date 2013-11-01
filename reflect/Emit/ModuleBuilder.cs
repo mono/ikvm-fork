@@ -140,7 +140,7 @@ namespace IKVM.Reflection.Emit
 			public override bool Equals(object obj)
 			{
 				MemberRefKey? other = obj as MemberRefKey?;
-				return other != null && Equals(other);
+				return other != null && other.HasValue && Equals(other.Value);
 			}
 
 			public override int GetHashCode()
