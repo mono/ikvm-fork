@@ -2040,6 +2040,7 @@ namespace IKVM.Reflection
 		{
 			if (this.Assembly == this.Universe.Mscorlib
 				|| this.Assembly.GetName().Name.Equals("mscorlib", StringComparison.OrdinalIgnoreCase)
+				|| this.Assembly.GetName().Name.Equals("System.Runtime", StringComparison.OrdinalIgnoreCase)
 				// check if mscorlib forwards the type (.NETCore profile reference mscorlib forwards System.Enum and System.ValueType to System.Runtime.dll)
 				|| this.Universe.Mscorlib.FindType(new TypeName(__Namespace, __Name)) == this)
 			{
