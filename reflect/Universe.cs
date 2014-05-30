@@ -128,6 +128,7 @@ namespace IKVM.Reflection
 		MetadataOnly = 16,
 		ResolveMissingMembers = 32,
 		DisableWindowsRuntimeProjection = 64,
+		SupressReferenceTypeIdentityConversion = 1 << 20
 	}
 
 	public sealed class Universe : IDisposable
@@ -1215,6 +1216,11 @@ namespace IKVM.Reflection
 		internal bool WindowsRuntimeProjection
 		{
 			get { return (options & UniverseOptions.DisableWindowsRuntimeProjection) == 0; }
+		}
+
+		internal bool SupressReferenceTypeIdentityConversion
+		{
+			get { return (options & UniverseOptions.SupressReferenceTypeIdentityConversion) != 0; }
 		}
 	}
 }
