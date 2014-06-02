@@ -747,7 +747,7 @@ namespace IKVM.Internal
 			{
 				byte[] buf = new byte[inp.available()];
 				inp.read(buf, 0, buf.Length);
-				return TypeWrapper.FromClass(IKVM.NativeCode.java.lang.ClassLoader.defineClass1(GetJavaClassLoader(), name, buf, 0, buf.Length, GetProtectionDomain(), null));
+				return TypeWrapper.FromClass(Java_java_lang_ClassLoader.defineClass1(GetJavaClassLoader(), name, buf, 0, buf.Length, GetProtectionDomain(), null));
 			}
 		}
 #endif
@@ -860,7 +860,7 @@ namespace IKVM.Internal
 			if (!found && unmangledName.EndsWith(".class", StringComparison.Ordinal) && unmangledName.IndexOf('.') == unmangledName.Length - 6)
 			{
 				TypeWrapper tw = FindLoadedClass(unmangledName.Substring(0, unmangledName.Length - 6).Replace('/', '.'));
-				if (tw != null && tw.GetClassLoader() == this && !tw.IsArray && !(tw is DynamicTypeWrapper))
+				if (tw != null && tw.GetClassLoader() == this && !tw.IsArray && !tw.IsDynamic)
 				{
 #if !FIRST_PASS
 					yield return new java.io.File(VirtualFileSystem.GetAssemblyClassesPath(assemblyLoader.Assembly) + unmangledName).toURI().toURL();
@@ -1103,28 +1103,23 @@ namespace IKVM.Internal
 			LazyInitExports();
 			lock (this)
 			{
-				Array.Resize(ref delegates, delegates.Length + 1);
-				delegates[delegates.Length - 1] = acl;
+				delegates = ArrayUtil.Concat(delegates, acl);
 			}
 		}
 
 #if !STATIC_COMPILER && !STUB_GENERATOR
-		internal string[] GetPackages()
+		internal List<KeyValuePair<string, string[]>> GetPackageInfo()
 		{
-			string[] packages = new string[0];
+			List<KeyValuePair<string, string[]>> list = new List<KeyValuePair<string, string[]>>();
 			foreach (Module m in assemblyLoader.Assembly.GetModules(false))
 			{
 				object[] attr = m.GetCustomAttributes(typeof(PackageListAttribute), false);
 				foreach (PackageListAttribute p in attr)
 				{
-					string[] mp = p.GetPackages();
-					string[] tmp = new string[packages.Length + mp.Length];
-					Array.Copy(packages, 0, tmp, 0, packages.Length);
-					Array.Copy(mp, 0, tmp, packages.Length, mp.Length);
-					packages = tmp;
+					list.Add(new KeyValuePair<string, string[]>(p.jar, p.packages));
 				}
 			}
-			return packages;
+			return list;
 		}
 #endif
 

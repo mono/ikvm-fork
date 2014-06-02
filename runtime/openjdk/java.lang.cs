@@ -96,6 +96,16 @@ static class Java_java_lang_Class
 #endif
 	}
 
+	public static byte[] getRawTypeAnnotations(java.lang.Class thisClass)
+	{
+		throw new NotImplementedException();
+	}
+
+    public static object getConstantPool(java.lang.Class thisClass)
+	{
+		throw new NotImplementedException();
+	}
+
 	public static bool isInstance(java.lang.Class thisClass, object obj)
 	{
 		return TypeWrapper.FromClass(thisClass).IsInstance(obj);
@@ -188,7 +198,7 @@ static class Java_java_lang_Class
 		return super != null ? super.ClassObject : null;
 	}
 
-	public static java.lang.Class[] getInterfaces(java.lang.Class thisClass)
+	public static java.lang.Class[] getInterfaces0(java.lang.Class thisClass)
 	{
 #if FIRST_PASS
 		return null;
@@ -252,7 +262,7 @@ static class Java_java_lang_Class
 		}
 	}
 
-	public static java.lang.Class getDeclaringClass(java.lang.Class thisClass)
+	public static java.lang.Class getDeclaringClass0(java.lang.Class thisClass)
 	{
 		try
 		{
@@ -305,13 +315,6 @@ static class Java_java_lang_Class
 #endif
 	}
 
-	public static void setProtectionDomain0(java.lang.Class thisClass, java.security.ProtectionDomain pd)
-	{
-#if !FIRST_PASS
-		thisClass.pd = pd;
-#endif
-	}
-
 	public static java.lang.Class getPrimitiveClass(string name)
 	{
 		// note that this method isn't used anymore (because it is an intrinsic (during core class library compilation))
@@ -341,7 +344,7 @@ static class Java_java_lang_Class
 		}
 	}
 
-	public static string getGenericSignature(java.lang.Class thisClass)
+	public static string getGenericSignature0(java.lang.Class thisClass)
 	{
 		TypeWrapper tw = TypeWrapper.FromClass(thisClass);
 		tw.Finish();
@@ -620,16 +623,7 @@ static class Java_java_lang_ClassLoader
 			try
 			{
 				ClassLoaderWrapper classLoaderWrapper = ClassLoaderWrapper.GetClassLoaderWrapper(thisClassLoader);
-				ClassFileParseOptions cfp = ClassFileParseOptions.LineNumberTable;
-				if (classLoaderWrapper.EmitDebugInfo)
-				{
-					cfp |= ClassFileParseOptions.LocalVariableTable;
-				}
-				if (classLoaderWrapper.RelaxedClassNameValidation)
-				{
-					cfp |= ClassFileParseOptions.RelaxedClassNameValidation;
-				}
-				ClassFile classFile = new ClassFile(b, off, len, name, cfp);
+				ClassFile classFile = new ClassFile(b, off, len, name, classLoaderWrapper.ClassFileParseOptions, null);
 				if (name != null && classFile.Name != name)
 				{
 #if !FIRST_PASS
@@ -703,13 +697,13 @@ static class Java_java_lang_ClassLoader
 
 static class Java_java_lang_ClassLoader_00024NativeLibrary
 {
-	public static void load(object thisNativeLibrary, string name)
+	public static void load(object thisNativeLibrary, string name, bool isBuiltin)
 	{
 #if !FIRST_PASS
 		if (VirtualFileSystem.IsVirtualFS(name))
 		{
 			// we fake success for native libraries loaded from VFS
-			((java.lang.ClassLoader.NativeLibrary)thisNativeLibrary).handle = -1;
+			((java.lang.ClassLoader.NativeLibrary)thisNativeLibrary).loaded = true;
 		}
 		else
 		{
@@ -725,7 +719,8 @@ static class Java_java_lang_ClassLoader_00024NativeLibrary
 	private static void doLoad(object thisNativeLibrary, string name)
 	{
 		java.lang.ClassLoader.NativeLibrary lib = (java.lang.ClassLoader.NativeLibrary)thisNativeLibrary;
-		lib.handle = IKVM.Runtime.JniHelper.LoadLibrary(name, TypeWrapper.FromClass(lib.fromClass).GetClassLoader());
+		lib.handle = IKVM.Runtime.JniHelper.LoadLibrary(name, TypeWrapper.FromClass(java.lang.ClassLoader.NativeLibrary.getFromClass()).GetClassLoader());
+		lib.loaded = true;
 	}
 #endif
 
@@ -736,16 +731,21 @@ static class Java_java_lang_ClassLoader_00024NativeLibrary
 	}
 
 	[SecuritySafeCritical]
-	public static void unload(object thisNativeLibrary)
+	public static void unload(object thisNativeLibrary, string name, bool isBuiltin)
 	{
 #if !FIRST_PASS
 		java.lang.ClassLoader.NativeLibrary lib = (java.lang.ClassLoader.NativeLibrary)thisNativeLibrary;
 		long handle = Interlocked.Exchange(ref lib.handle, 0);
 		if (handle != 0)
 		{
-			IKVM.Runtime.JniHelper.UnloadLibrary(handle, TypeWrapper.FromClass(lib.fromClass).GetClassLoader());
+			IKVM.Runtime.JniHelper.UnloadLibrary(handle, TypeWrapper.FromClass(java.lang.ClassLoader.NativeLibrary.getFromClass()).GetClassLoader());
 		}
 #endif
+	}
+
+	public static string findBuiltinLib(string name)
+	{
+		return null;
 	}
 }
 
@@ -813,6 +813,99 @@ static class Java_java_lang_Float
 	}
 }
 
+static class Java_java_lang_LangHelper
+{
+	public static object getConstantPool(java.lang.Class klass)
+	{
+#if FIRST_PASS
+		return null;
+#else
+		return new ConstantPoolImpl();
+#endif
+	}
+
+#if !FIRST_PASS
+	sealed class ConstantPoolImpl : sun.reflect.ConstantPool
+	{
+		public override string getUTF8At(int index)
+		{
+			switch (index)
+			{
+				case 3:
+					return "value";
+				case 4:
+					return "SOURCE";
+				case 5:
+					return "CLASS";
+				case 6:
+					return "RUNTIME";
+				case 7:
+					return "Ljava/lang/annotation/Retention;";
+				case 8:
+					return "Ljava/lang/annotation/RetentionPolicy;";
+				case 9:
+					return "Ljava/lang/annotation/Inherited;";
+				default:
+					throw new NotImplementedException("index = " + index);
+			}
+		}
+	}
+#endif
+
+	public static byte[] getRawClassAnnotations(java.lang.Class klass)
+	{
+#if FIRST_PASS
+		return null;
+#else
+		// This method is called (indirectly) by the sun.reflect.annotation.AnnotationType constructor
+		// to figure out the annotation Retention and and if it is Inherited.
+		// We only support it for that scenario.
+		if (!klass.isAnnotation())
+		{
+			// this is to hopefully detect cases where code depends on this API
+			// (which we don't support)
+			throw new NotSupportedException();
+		}
+		// TODO optimize this by adding virtual properties to TypeWrapper (or TypeWrapper.Annotation) that expose these meta annotation
+		java.lang.annotation.Retention retention = (java.lang.annotation.Retention)klass.getDeclaredAnnotation(typeof(java.lang.annotation.Retention));
+		bool inherited = klass.isAnnotationPresent(typeof(java.lang.annotation.Inherited));
+		if (retention == null && !inherited)
+		{
+			return null;
+		}
+		IKVM.StubGen.ClassFileWriter writer = new IKVM.StubGen.ClassFileWriter(0, "dummy", "dummy", 0, 0);
+		writer.AddUtf8("value");
+		writer.AddUtf8("SOURCE");
+		writer.AddUtf8("CLASS");
+		writer.AddUtf8("RUNTIME");
+		writer.AddUtf8("Ljava/lang/annotation/Retention;");
+		writer.AddUtf8("Ljava/lang/annotation/RetentionPolicy;");
+		writer.AddUtf8("Ljava/lang/annotation/Inherited;");
+		IKVM.StubGen.RuntimeVisibleAnnotationsAttribute attr = new IKVM.StubGen.RuntimeVisibleAnnotationsAttribute(writer);
+		if (retention != null)
+		{
+			attr.Add(new object[] {
+				IKVM.Attributes.AnnotationDefaultAttribute.TAG_ANNOTATION,
+				"Ljava/lang/annotation/Retention;",
+				"value",
+				new object[] { IKVM.Attributes.AnnotationDefaultAttribute.TAG_ENUM, "Ljava/lang/annotation/RetentionPolicy;", retention.value().toString() }
+			});
+		}
+		if (inherited)
+		{
+			attr.Add(new object[] {
+				IKVM.Attributes.AnnotationDefaultAttribute.TAG_ANNOTATION,
+				"Ljava/lang/annotation/Inherited;",
+			});
+		}
+		MemoryStream mem = new MemoryStream();
+		IKVM.StubGen.BigEndianStream bes = new IKVM.StubGen.BigEndianStream(mem);
+		attr.WriteImpl(bes);
+		return mem.ToArray();
+#endif
+	}
+}
+
 static class Java_java_lang_Package
 {
 	private static Dictionary<string, string> systemPackages;
@@ -823,9 +916,12 @@ static class Java_java_lang_Package
 		{
 			Dictionary<string, string> dict = new Dictionary<string, string>();
 			string path = VirtualFileSystem.GetAssemblyResourcesPath(JVM.CoreAssembly) + "resources.jar";
-			foreach (string pkg in ClassLoaderWrapper.GetBootstrapClassLoader().GetPackages())
+			foreach (KeyValuePair<string, string[]> pkgs in ClassLoaderWrapper.GetBootstrapClassLoader().GetPackageInfo())
 			{
-				dict[pkg.Replace('.', '/') + "/"] = path;
+				foreach (string pkg in pkgs.Value)
+				{
+					dict[pkg.Replace('.', '/') + "/"] = path;
+				}
 			}
 			Interlocked.CompareExchange(ref systemPackages, dict, null);
 		}
@@ -927,18 +1023,11 @@ static class Java_java_lang_SecurityManager
 		{
 			StackFrame frame = trace.GetFrame(i);
 			MethodBase method = frame.GetMethod();
-			Type type = method.DeclaringType;
-			// NOTE these checks should be the same as the ones in Reflection.getCallerClass
-			if (Java_sun_reflect_Reflection.IsHideFromJava(method)
-				|| type == null
-				|| type.Assembly == typeof(object).Assembly
-				|| type.Assembly == typeof(Java_java_lang_SecurityManager).Assembly
-				|| type.Assembly == jniAssembly
-				|| type == typeof(java.lang.reflect.Constructor)
-				|| type == typeof(java.lang.reflect.Method))
+			if (Java_sun_reflect_Reflection.IsHideFromStackWalk(method))
 			{
 				continue;
 			}
+			Type type = method.DeclaringType;
 			if (type == typeof(java.lang.SecurityManager))
 			{
 				continue;
@@ -1250,7 +1339,7 @@ static class Java_java_lang_ProcessImpl
 		for (; ; )
 		{
 			string str = cmdstr.Substring(0, pos);
-			if (Path.IsPathRooted(str))
+			if (IsPathRooted(str))
 			{
 				if (Exists(str))
 				{
@@ -1303,6 +1392,18 @@ static class Java_java_lang_ProcessImpl
 		return list;
 	}
 
+	private static bool IsPathRooted(string path)
+	{
+		try
+		{
+			return Path.IsPathRooted(path);
+		}
+		catch (ArgumentException)
+		{
+			return false;
+		}
+	}
+
 	private static bool Exists(string file)
 	{
 		try
@@ -1316,6 +1417,10 @@ static class Java_java_lang_ProcessImpl
 				return false;
 			}
 			else if (file.IndexOf('.') == -1 && File.Exists(file + ".exe"))
+			{
+				return true;
+			}
+			else if (mapVfsExecutable(file) != file)
 			{
 				return true;
 			}
