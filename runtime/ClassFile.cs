@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2002-2013 Jeroen Frijters
+  Copyright (C) 2002-2014 Jeroen Frijters
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -52,6 +52,7 @@ namespace IKVM.Internal
 		LocalVariableTable = 1,
 		LineNumberTable = 2,
 		RelaxedClassNameValidation = 4,
+		TrustedAnnotations = 8,
 	}
 
 	sealed class ClassFile
@@ -66,6 +67,9 @@ namespace IKVM.Internal
 		private const ushort FLAG_MASK_DEPRECATED = 0x100;
 		private const ushort FLAG_MASK_INTERNAL = 0x200;
 		private const ushort FLAG_CALLERSENSITIVE = 0x400;
+		private const ushort FLAG_LAMBDAFORM_COMPILED = 0x800;
+		private const ushort FLAG_LAMBDAFORM_HIDDEN = 0x1000;
+		private const ushort FLAG_FORCEINLINE = 0x2000;
 		private ConstantPoolItemClass[] interfaces;
 		private Field[] fields;
 		private Method[] methods;
@@ -83,7 +87,7 @@ namespace IKVM.Internal
 		private static class SupportedVersions
 		{
 			internal static readonly int Minimum = 45;
-			internal static readonly int Maximum = Experimental.JDK_8 ? 52 : 51;
+			internal static readonly int Maximum = Experimental.JDK_9 ? 53 : 52;
 		}
 
 #if STATIC_COMPILER
@@ -160,7 +164,7 @@ namespace IKVM.Internal
 		}
 #endif // STATIC_COMPILER
 
-		internal ClassFile(byte[] buf, int offset, int length, string inputClassName, ClassFileParseOptions options)
+		internal ClassFile(byte[] buf, int offset, int length, string inputClassName, ClassFileParseOptions options, object[] constantPoolPatches)
 		{
 			try
 			{
@@ -242,6 +246,10 @@ namespace IKVM.Internal
 							throw new ClassFormatError("{0} (Illegal constant pool type 0x{1:X})", inputClassName, tag);
 					}
 				}
+				if (constantPoolPatches != null)
+				{
+					PatchConstantPool(constantPoolPatches, utf8_cp, inputClassName);
+				}
 				for(int i = 1; i < constantpoolcount; i++)
 				{
 					if(constantpool[i] != null)
@@ -283,7 +291,7 @@ namespace IKVM.Internal
 				ValidateConstantPoolItemClass(inputClassName, this_class);
 				super_class = br.ReadUInt16();
 				ValidateConstantPoolItemClass(inputClassName, super_class);
-				if(IsInterface && (super_class == 0 || this.SuperClass != "java.lang.Object"))
+				if(IsInterface && (super_class == 0 || this.SuperClass.Name != "java.lang.Object"))
 				{
 					throw new ClassFormatError("{0} (Interfaces must have java.lang.Object as superclass)", Name);
 				}
@@ -558,6 +566,66 @@ namespace IKVM.Internal
 			}
 		}
 
+		private void PatchConstantPool(object[] constantPoolPatches, string[] utf8_cp, string inputClassName)
+		{
+#if !STATIC_COMPILER && !FIRST_PASS
+			for (int i = 0; i < constantPoolPatches.Length; i++)
+			{
+				if (constantPoolPatches[i] != null)
+				{
+					if (utf8_cp[i] != null)
+					{
+						if (!(constantPoolPatches[i] is string))
+						{
+							throw new ClassFormatError("Illegal utf8 patch at {0} in class file {1}", i, inputClassName);
+						}
+						utf8_cp[i] = (string)constantPoolPatches[i];
+					}
+					else if (constantpool[i] != null)
+					{
+						switch (constantpool[i].GetConstantType())
+						{
+							case ConstantType.String:
+								constantpool[i] = new ConstantPoolItemLiveObject(constantPoolPatches[i]);
+								break;
+							case ConstantType.Class:
+								java.lang.Class clazz;
+								string name;
+								if ((clazz = constantPoolPatches[i] as java.lang.Class) != null)
+								{
+									TypeWrapper tw = TypeWrapper.FromClass(clazz);
+									constantpool[i] = new ConstantPoolItemClass(tw.Name, tw);
+								}
+								else if ((name = constantPoolPatches[i] as string) != null)
+								{
+									constantpool[i] = new ConstantPoolItemClass(String.Intern(name.Replace('/', '.')), null);
+								}
+								else
+								{
+									throw new ClassFormatError("Illegal class patch at {0} in class file {1}", i, inputClassName);
+								}
+								break;
+							case ConstantType.Integer:
+								((ConstantPoolItemInteger)constantpool[i]).v = ((java.lang.Integer)constantPoolPatches[i]).intValue();
+								break;
+							case ConstantType.Long:
+								((ConstantPoolItemLong)constantpool[i]).l = ((java.lang.Long)constantPoolPatches[i]).longValue();
+								break;
+							case ConstantType.Float:
+								((ConstantPoolItemFloat)constantpool[i]).v = ((java.lang.Float)constantPoolPatches[i]).floatValue();
+								break;
+							case ConstantType.Double:
+								((ConstantPoolItemDouble)constantpool[i]).d = ((java.lang.Double)constantPoolPatches[i]).doubleValue();
+								break;
+							default:
+								throw new NotImplementedException("ConstantPoolPatch: " + constantPoolPatches[i]);
+						}
+					}
+				}
+			}
+#endif
+		}
+
 		private void MarkLinkRequiredConstantPoolItem(int index)
 		{
 			if (index > 0 && index < constantpool.Length && constantpool[index] != null)
@@ -730,7 +798,7 @@ namespace IKVM.Internal
 			}
 			for(int i = 0; i < name.Length; i++)
 			{
-				if(".;/<>".IndexOf(name[i]) != -1)
+				if(".;[/<>".IndexOf(name[i]) != -1)
 				{
 					return false;
 				}
@@ -746,7 +814,7 @@ namespace IKVM.Internal
 			}
 			for(int i = 0; i < name.Length; i++)
 			{
-				if(".;/".IndexOf(name[i]) != -1)
+				if(".;[/".IndexOf(name[i]) != -1)
 				{
 					return false;
 				}
@@ -875,6 +943,8 @@ namespace IKVM.Internal
 
 		internal void Link(TypeWrapper thisType)
 		{
+			// this is not just an optimization, it's required for anonymous classes to be able to refer to themselves
+			((ConstantPoolItemClass)constantpool[this_class]).LinkSelf(thisType);
 			for(int i = 1; i < constantpool.Length; i++)
 			{
 				if(constantpool[i] != null)
@@ -1102,6 +1172,11 @@ namespace IKVM.Internal
 			return (ConstantPoolItemMethodType)constantpool[index];
 		}
 
+		internal object GetConstantPoolConstantLiveObject(int index)
+		{
+			return ((ConstantPoolItemLiveObject)constantpool[index]).Value;
+		}
+
 		internal string Name
 		{
 			get
@@ -1110,11 +1185,11 @@ namespace IKVM.Internal
 			}
 		}
 
-		internal string SuperClass
+		internal ConstantPoolItemClass SuperClass
 		{
 			get
 			{
-				return GetConstantPoolClass(super_class);
+				return (ConstantPoolItemClass)constantpool[super_class];
 			}
 		}
 
@@ -1301,6 +1376,7 @@ namespace IKVM.Internal
 			Class,
 			MethodHandle,
 			MethodType,
+			LiveObject,		// used by anonymous class constant pool patching
 		}
 
 		internal abstract class ConstantPoolItem
@@ -1335,8 +1411,19 @@ namespace IKVM.Internal
 				name_index = br.ReadUInt16();
 			}
 
+			internal ConstantPoolItemClass(string name, TypeWrapper typeWrapper)
+			{
+				this.name = name;
+				this.typeWrapper = typeWrapper;
+			}
+
 			internal override void Resolve(ClassFile classFile, string[] utf8_cp, ClassFileParseOptions options)
 			{
+				// if the item was patched, we already have a name
+				if(name != null)
+				{
+					return;
+				}
 				name = classFile.GetConstantPoolUtf8String(utf8_cp, name_index);
 				if(name.Length > 0)
 				{
@@ -1413,7 +1500,15 @@ namespace IKVM.Internal
 
 			internal override void MarkLinkRequired()
 			{
-				typeWrapper = VerifierTypeWrapper.Null;
+				if(typeWrapper == null)
+				{
+					typeWrapper = VerifierTypeWrapper.Null;
+				}
+			}
+
+			internal void LinkSelf(TypeWrapper thisType)
+			{
+				this.typeWrapper = thisType;
 			}
 
 			internal override void Link(TypeWrapper thisType)
@@ -1469,7 +1564,7 @@ namespace IKVM.Internal
 
 		private sealed class ConstantPoolItemDouble : ConstantPoolItem
 		{
-			private double d;
+			internal double d;
 
 			internal ConstantPoolItemDouble(BigEndianBinaryReader br)
 			{
@@ -1799,7 +1894,7 @@ namespace IKVM.Internal
 
 		private sealed class ConstantPoolItemFloat : ConstantPoolItem
 		{
-			private float v;
+			internal float v;
 
 			internal ConstantPoolItemFloat(BigEndianBinaryReader br)
 			{
@@ -1822,7 +1917,7 @@ namespace IKVM.Internal
 
 		private sealed class ConstantPoolItemInteger : ConstantPoolItem
 		{
-			private int v;
+			internal int v;
 
 			internal ConstantPoolItemInteger(BigEndianBinaryReader br)
 			{
@@ -1845,7 +1940,7 @@ namespace IKVM.Internal
 
 		private sealed class ConstantPoolItemLong : ConstantPoolItem
 		{
-			private long l;
+			internal long l;
 
 			internal ConstantPoolItemLong(BigEndianBinaryReader br)
 			{
@@ -1914,7 +2009,7 @@ namespace IKVM.Internal
 					case RefKind.invokeStatic:
 					case RefKind.newInvokeSpecial:
 						cpi = classFile.GetConstantPoolItem(method_index) as ConstantPoolItemMethodref;
-						if (cpi == null && classFile.MajorVersion >= 52 && (RefKind)ref_kind == RefKind.invokeStatic)
+						if (cpi == null && classFile.MajorVersion >= 52 && ((RefKind)ref_kind == RefKind.invokeStatic || (RefKind)ref_kind == RefKind.invokeSpecial))
 							goto case RefKind.invokeInterface;
 						break;
 					case RefKind.invokeInterface:
@@ -2143,6 +2238,21 @@ namespace IKVM.Internal
 				{
 					return s;
 				}
+			}
+		}
+
+		private sealed class ConstantPoolItemLiveObject : ConstantPoolItem
+		{
+			internal readonly object Value;
+
+			internal ConstantPoolItemLiveObject(object value)
+			{
+				this.Value = value;
+			}
+
+			internal override ConstantType GetConstantType()
+			{
+				return ConstantType.LiveObject;
 			}
 		}
 
@@ -2568,6 +2678,7 @@ namespace IKVM.Internal
 #if STATIC_COMPILER
 				internal string DllExportName;
 				internal int DllExportOrdinal;
+				internal string InterlockedCompareAndSetField;
 #endif
 			}
 
@@ -2655,15 +2766,29 @@ namespace IKVM.Internal
 								goto default;
 							}
 							annotations = ReadAnnotations(br, classFile, utf8_cp);
-#if STATIC_COMPILER
-							foreach(object[] annot in annotations)
+							if ((options & ClassFileParseOptions.TrustedAnnotations) != 0)
 							{
-								if(annot[1].Equals("Lsun/reflect/CallerSensitive;"))
+								foreach(object[] annot in annotations)
 								{
-									flags |= FLAG_CALLERSENSITIVE;
+									switch((string)annot[1])
+									{
+#if STATIC_COMPILER
+										case "Lsun/reflect/CallerSensitive;":
+											flags |= FLAG_CALLERSENSITIVE;
+											break;
+#endif
+										case "Ljava/lang/invoke/LambdaForm$Compiled;":
+											flags |= FLAG_LAMBDAFORM_COMPILED;
+											break;
+										case "Ljava/lang/invoke/LambdaForm$Hidden;":
+											flags |= FLAG_LAMBDAFORM_HIDDEN;
+											break;
+										case "Ljava/lang/invoke/ForceInline;":
+											flags |= FLAG_FORCEINLINE;
+											break;
+									}
 								}
 							}
-#endif
 							break;
 						case "RuntimeVisibleParameterAnnotations":
 						{
@@ -2763,6 +2888,25 @@ namespace IKVM.Internal
 										}
 									}
 								}
+								if(annot[1].Equals("Likvm/internal/InterlockedCompareAndSet;"))
+								{
+									string field = null;
+									for (int j = 2; j < annot.Length; j += 2)
+									{
+										if (annot[j].Equals("value") && annot[j + 1] is string)
+										{
+											field = (string)annot[j + 1];
+										}
+									}
+									if (field != null)
+									{
+										if (low == null)
+										{
+											low = new LowFreqData();
+										}
+										low.InterlockedCompareAndSetField = field;
+									}
+								}
 							}
 							break;
 #endif
@@ -2776,18 +2920,7 @@ namespace IKVM.Internal
 							{
 								throw new ClassFormatError("{0} (Duplicate MethodParameters attribute)", classFile.Name);
 							}
-							BigEndianBinaryReader rdr = br.Section(br.ReadUInt32());
-							byte parameters_count = rdr.ReadByte();
-							parameters = new MethodParametersEntry[parameters_count];
-							for(int j = 0; j < parameters_count; j++)
-							{
-								parameters[j].name = classFile.GetConstantPoolUtf8String(utf8_cp, rdr.ReadUInt16());
-								parameters[j].flags = rdr.ReadUInt16();
-							}
-							if(!rdr.IsAtEnd)
-							{
-								throw new ClassFormatError("{0} (MethodParameters attribute has wrong length)", classFile.Name);
-							}
+							parameters = ReadMethodParameters(br, utf8_cp);
 							break;
 						}
 						default:
@@ -2799,7 +2932,7 @@ namespace IKVM.Internal
 				{
 					if(!code.IsEmpty)
 					{
-						throw new ClassFormatError("Abstract or native method cannot have a Code attribute");
+						throw new ClassFormatError("Code attribute in native or abstract methods in class file " + classFile.Name);
 					}
 				}
 				else
@@ -2816,6 +2949,32 @@ namespace IKVM.Internal
 				}
 			}
 
+			private static MethodParametersEntry[] ReadMethodParameters(BigEndianBinaryReader br, string[] utf8_cp)
+			{
+				uint length = br.ReadUInt32();
+				if(length > 0)
+				{
+					BigEndianBinaryReader rdr = br.Section(length);
+					byte parameters_count = rdr.ReadByte();
+					if(length == 1 + parameters_count * 4)
+					{
+						MethodParametersEntry[] parameters = new MethodParametersEntry[parameters_count];
+						for(int j = 0; j < parameters_count; j++)
+						{
+							ushort name = rdr.ReadUInt16();
+							if(name <= 0 || name >= utf8_cp.Length || utf8_cp[name] == null)
+							{
+								return MethodParametersEntry.Malformed;
+							}
+							parameters[j].name = utf8_cp[name];
+							parameters[j].flags = rdr.ReadUInt16();
+						}
+						return parameters;
+					}
+				}
+				return MethodParametersEntry.Malformed;
+			}
+
 			protected override void ValidateSig(ClassFile classFile, string descriptor)
 			{
 				if(!IsValidMethodSig(descriptor))
@@ -2829,6 +2988,15 @@ namespace IKVM.Internal
 				get
 				{
 					return (access_flags & Modifiers.Strictfp) != 0;
+				}
+			}
+
+			internal bool IsVirtual
+			{
+				get
+				{
+					return (access_flags & (Modifiers.Static | Modifiers.Private)) == 0
+						&& !IsConstructor;
 				}
 			}
 
@@ -2858,6 +3026,30 @@ namespace IKVM.Internal
 				}
 			}
 #endif
+
+			internal bool IsLambdaFormCompiled
+			{
+				get
+				{
+					return (flags & FLAG_LAMBDAFORM_COMPILED) != 0;
+				}
+			}
+
+			internal bool IsLambdaFormHidden
+			{
+				get
+				{
+					return (flags & FLAG_LAMBDAFORM_HIDDEN) != 0;
+				}
+			}
+
+			internal bool IsForceInline
+			{
+				get
+				{
+					return (flags & FLAG_FORCEINLINE) != 0;
+				}
+			}
 
 			internal string[] ExceptionsAttribute
 			{
@@ -2897,6 +3089,14 @@ namespace IKVM.Internal
 				get
 				{
 					return low == null ? -1 : low.DllExportOrdinal;
+				}
+			}
+
+			internal string InterlockedCompareAndSetField
+			{
+				get
+				{
+					return low == null ? null : low.InterlockedCompareAndSetField;
 				}
 			}
 #endif
@@ -2982,6 +3182,14 @@ namespace IKVM.Internal
 				}
 			}
 
+			internal bool MalformedMethodParameters
+			{
+				get
+				{
+					return parameters == MethodParametersEntry.Malformed;
+				}
+			}
+
 			internal bool HasJsr
 			{
 				get
@@ -3007,9 +3215,9 @@ namespace IKVM.Internal
 					max_stack = br.ReadUInt16();
 					max_locals = br.ReadUInt16();
 					uint code_length = br.ReadUInt32();
-					if(code_length > 65535)
+					if(code_length == 0 || code_length > 65535)
 					{
-						throw new ClassFormatError("{0} (Invalid Code length {1})", classFile.Name, code_length);
+						throw new ClassFormatError("Invalid method Code length {1} in class file {0}", classFile.Name, code_length);
 					}
 					Instruction[] instructions = new Instruction[code_length + 1];
 					int basePosition = br.Position;
@@ -3566,6 +3774,7 @@ namespace IKVM.Internal
 
 			internal struct MethodParametersEntry
 			{
+				internal static readonly MethodParametersEntry[] Malformed = new MethodParametersEntry[0];
 				internal string name;
 				internal ushort flags;
 			}
