@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2002-2013 Jeroen Frijters
+  Copyright (C) 2002-2014 Jeroen Frijters
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -52,16 +52,18 @@ namespace IKVM.Internal
 		RemoveAsserts = 16,
 		NoAutomagicSerialization = 32,
 		DisableDynamicBinding = 64,
+		NoRefEmitHelpers = 128,
 	}
 
 #if !STUB_GENERATOR
 	abstract class TypeWrapperFactory
 	{
 		internal abstract ModuleBuilder ModuleBuilder { get; }
-		internal abstract TypeWrapper DefineClassImpl(Dictionary<string, TypeWrapper> types, ClassFile f, ClassLoaderWrapper classLoader, ProtectionDomain protectionDomain);
+		internal abstract TypeWrapper DefineClassImpl(Dictionary<string, TypeWrapper> types, TypeWrapper host, ClassFile f, ClassLoaderWrapper classLoader, ProtectionDomain protectionDomain);
 		internal abstract bool ReserveName(string name);
 		internal abstract string AllocMangledName(DynamicTypeWrapper tw);
 		internal abstract Type DefineUnloadable(string name);
+		internal abstract Type DefineDelegate(int parameterCount, bool returnVoid);
 		internal abstract bool HasInternalAccess { get; }
 #if CLASSGC
 		internal abstract void AddInternalsVisibleTo(Assembly friend);
@@ -293,6 +295,50 @@ namespace IKVM.Internal
 			}
 		}
 
+		internal bool EmitNoRefEmitHelpers
+		{
+			get
+			{
+				return (codegenoptions & CodeGenOptions.NoRefEmitHelpers) != 0;
+			}
+		}
+
+		internal bool WorkaroundAbstractMethodWidening
+		{
+			get
+			{
+				// pre-Roslyn C# compiler doesn't like widening access to abstract methods
+				return true;
+			}
+		}
+
+		internal bool WorkaroundInterfaceFields
+		{
+			get
+			{
+				// pre-Roslyn C# compiler doesn't allow access to interface fields
+				return true;
+			}
+		}
+
+		internal bool WorkaroundInterfacePrivateMethods
+		{
+			get
+			{
+				// pre-Roslyn C# compiler doesn't like interfaces that have non-public methods
+				return true;
+			}
+		}
+
+		internal bool WorkaroundInterfaceStaticMethods
+		{
+			get
+			{
+				// pre-Roslyn C# compiler doesn't allow access to interface static methods
+				return true;
+			}
+		}
+
 #if !STATIC_COMPILER && !STUB_GENERATOR
 		internal bool RelaxedClassNameValidation
 		{
@@ -365,7 +411,7 @@ namespace IKVM.Internal
 			}
 			try
 			{
-				return GetTypeWrapperFactory().DefineClassImpl(types, f, this, protectionDomain);
+				return GetTypeWrapperFactory().DefineClassImpl(types, null, f, this, protectionDomain);
 			}
 			finally
 			{
@@ -775,15 +821,6 @@ namespace IKVM.Internal
 		}
 #endif
 
-		internal TypeWrapper ExpressionTypeWrapper(string type)
-		{
-			Debug.Assert(!type.StartsWith("Lret;"));
-			Debug.Assert(type != "Lnull");
-
-			int index = 0;
-			return SigDecoderWrapper(ref index, type, false);
-		}
-
 		// NOTE this exposes potentially unfinished types
 		internal Type[] ArgTypeListFromSig(string sig)
 		{
@@ -802,7 +839,7 @@ namespace IKVM.Internal
 
 		private TypeWrapper SigDecoderLoadClass(string name, bool nothrow)
 		{
-			return nothrow ? LoadClassNoThrow(this, name) : LoadClassByDottedName(name);
+			return nothrow ? LoadClassNoThrow(this, name, false) : LoadClassByDottedName(name);
 		}
 
 		// NOTE: this will ignore anything following the sig marker (so that it can be used to decode method signatures)
@@ -1340,7 +1377,7 @@ namespace IKVM.Internal
 		}
 #endif
 
-		internal static TypeWrapper LoadClassNoThrow(ClassLoaderWrapper classLoader, string name)
+		internal static TypeWrapper LoadClassNoThrow(ClassLoaderWrapper classLoader, string name, bool issueWarning)
 		{
 			try
 			{
@@ -1355,7 +1392,10 @@ namespace IKVM.Internal
 						elementTypeName = elementTypeName.Substring(skip, elementTypeName.Length - skip - 1);
 					}
 #if STATIC_COMPILER
-					classLoader.IssueMessage(Message.ClassNotFound, elementTypeName);
+					if (issueWarning || classLoader.WarningLevelHigh)
+					{
+						classLoader.IssueMessage(Message.ClassNotFound, elementTypeName);
+					}
 #else
 					Tracer.Error(Tracer.ClassLoading, "Class not found: {0}", elementTypeName);
 #endif
@@ -1413,6 +1453,54 @@ namespace IKVM.Internal
 			}
 #endif
 		}
+
+#if !STUB_GENERATOR
+		internal ClassFileParseOptions ClassFileParseOptions
+		{
+			get
+			{
+#if STATIC_COMPILER
+				ClassFileParseOptions cfp = ClassFileParseOptions.LocalVariableTable;
+				if (EmitStackTraceInfo)
+				{
+					cfp |= ClassFileParseOptions.LineNumberTable;
+				}
+				if (bootstrapClassLoader is CompilerClassLoader)
+				{
+					cfp |= ClassFileParseOptions.TrustedAnnotations;
+				}
+				return cfp;
+#else
+				ClassFileParseOptions cfp = ClassFileParseOptions.LineNumberTable;
+				if (EmitDebugInfo)
+				{
+					cfp |= ClassFileParseOptions.LocalVariableTable;
+				}
+				if (RelaxedClassNameValidation)
+				{
+					cfp |= ClassFileParseOptions.RelaxedClassNameValidation;
+				}
+				if (this == bootstrapClassLoader)
+				{
+					cfp |= ClassFileParseOptions.TrustedAnnotations;
+				}
+				return cfp;
+#endif
+			}
+		}
+#endif
+
+#if STATIC_COMPILER
+		internal virtual bool WarningLevelHigh
+		{
+			get { return false; }
+		}
+
+		internal virtual bool NoParameterReflection
+		{
+			get { return false; }
+		}
+#endif
 	}
 
 	sealed class GenericClassLoaderWrapper : ClassLoaderWrapper
@@ -1495,7 +1583,7 @@ namespace IKVM.Internal
 			if (name.EndsWith(".class", StringComparison.Ordinal) && name.IndexOf('.') == name.Length - 6)
 			{
 				TypeWrapper tw = FindLoadedClass(name.Substring(0, name.Length - 6).Replace('/', '.'));
-				if (tw != null && !tw.IsArray && !(tw is DynamicTypeWrapper))
+				if (tw != null && !tw.IsArray && !tw.IsDynamic)
 				{
 					ClassLoaderWrapper loader = tw.GetClassLoader();
 					if (loader is GenericClassLoaderWrapper)
@@ -1521,7 +1609,7 @@ namespace IKVM.Internal
 			if (name.EndsWith(".class", StringComparison.Ordinal) && name.IndexOf('.') == name.Length - 6)
 			{
 				TypeWrapper tw = FindLoadedClass(name.Substring(0, name.Length - 6).Replace('/', '.'));
-				if (tw != null && tw.GetClassLoader() == this && !tw.IsArray && !(tw is DynamicTypeWrapper))
+				if (tw != null && tw.GetClassLoader() == this && !tw.IsArray && !tw.IsDynamic)
 				{
 					return new java.net.URL("ikvmres", "gen", ClassLoaderWrapper.GetGenericClassLoaderId(this), "/" + name);
 				}

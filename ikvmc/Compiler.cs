@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2002-2013 Jeroen Frijters
+  Copyright (C) 2002-2014 Jeroen Frijters
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -156,6 +156,13 @@ sealed class FatalCompilerErrorException : Exception
 				return "The type '{0}' is defined in an assembly that is not referenced. You must add a reference to assembly '{1}'";
 			case IKVM.Internal.Message.FileNotFound:
 				return "File not found: {0}";
+			case IKVM.Internal.Message.RuntimeMethodMissing:
+				return "Runtime method '{0}' not found";
+			case IKVM.Internal.Message.MapFileFieldNotFound:
+				return "Field '{0}' referenced in remap file was not found in class '{1}'";
+			case IKVM.Internal.Message.GhostInterfaceMethodMissing:
+				return "Remapped class '{0}' does not implement ghost interface method\n" + 
+					"\t({1}.{2}{3})";
 			default:
 				return "Missing Error Message. Please file a bug.";
 		}
@@ -167,7 +174,6 @@ sealed class IkvmcCompiler
 	private bool nonleaf;
 	private string manifestMainClass;
 	private string defaultAssemblyName;
-	private List<string> classesToExclude = new List<string>();
 	private static bool time;
 	private static string runtimeAssembly;
 	private static bool nostdlib;
@@ -515,6 +521,8 @@ sealed class IkvmcCompiler
 		Console.Error.WriteLine("-lib:<dir>                     Additional directories to search for references");
 		Console.Error.WriteLine("-highentropyva                 Enable high entropy ASLR");
 		Console.Error.WriteLine("-static                        Disable dynamic binding");
+		Console.Error.WriteLine("-assemblyattributes:<file>     Read assembly custom attributes from specified");
+		Console.Error.WriteLine("                               class file.");
 	}
 
 	void ParseCommandLine(IEnumerator<string> arglist, List<CompilerOptions> targets, CompilerOptions options)
@@ -543,7 +551,6 @@ sealed class IkvmcCompiler
 				IkvmcCompiler nestedLevel = new IkvmcCompiler();
 				nestedLevel.manifestMainClass = manifestMainClass;
 				nestedLevel.defaultAssemblyName = defaultAssemblyName;
-				nestedLevel.classesToExclude = new List<string>(classesToExclude);
 				nestedLevel.ContinueParseCommandLine(arglist, targets, options.Copy());
 			}
 			else if(s == "}")
@@ -775,7 +782,7 @@ sealed class IkvmcCompiler
 				}
 				else if(s.StartsWith("-exclude:"))
 				{
-					ProcessExclusionFile(classesToExclude, s.Substring(9));
+					ProcessExclusionFile(ref options.classesToExclude, s.Substring(9));
 				}
 				else if(s.StartsWith("-version:"))
 				{
@@ -977,11 +984,24 @@ sealed class IkvmcCompiler
 				}
 				else if(s == "-static")
 				{
-					options.codegenoptions |= CodeGenOptions.DisableDynamicBinding;
+					// we abuse -static to also enable support for NoRefEmit scenarios
+					options.codegenoptions |= CodeGenOptions.DisableDynamicBinding | CodeGenOptions.NoRefEmitHelpers;
 				}
 				else if(s == "-nojarstubs")	// undocumented temporary option to mitigate risk
 				{
 					options.nojarstubs = true;
+				}
+				else if(s.StartsWith("-assemblyattributes:", StringComparison.Ordinal))
+				{
+					ProcessAttributeAnnotationsClass(ref options.assemblyAttributeAnnotations, s.Substring(20));
+				}
+				else if(s == "-w4") // undocumented option to always warn if a class isn't found
+				{
+					options.warningLevelHigh = true;
+				}
+				else if(s == "-noparameterreflection") // undocumented option to compile core class libraries with, to disable MethodParameter attribute
+				{
+					options.noParameterReflection = true;
 				}
 				else
 				{
@@ -1032,7 +1052,6 @@ sealed class IkvmcCompiler
 			StaticCompiler.IssueMessage(options, Message.MainMethodFromManifest, manifestMainClass);
 			options.mainClass = manifestMainClass;
 		}
-		options.classesToExclude = classesToExclude.ToArray();
 		targets.Add(options);
 	}
 
@@ -1180,7 +1199,7 @@ sealed class IkvmcCompiler
 				{
 					foreach (CompilerOptions peer in targets)
 					{
-						if (peer.assembly.Equals(reference, StringComparison.InvariantCultureIgnoreCase))
+						if (peer.assembly.Equals(reference, StringComparison.OrdinalIgnoreCase))
 						{
 							ArrayAppend(ref target.peerReferences, peer.assembly);
 							goto next_reference;
@@ -1238,10 +1257,22 @@ sealed class IkvmcCompiler
 		}
 		else
 		{
-			T[] temp = new T[array.Length + 1];
-			Array.Copy(array, 0, temp, 0, array.Length);
-			temp[temp.Length - 1] = element;
-			array = temp;
+			array = ArrayUtil.Concat(array, element);
+		}
+	}
+
+	private static void ArrayAppend<T>(ref T[] array, T[] append)
+	{
+		if (array == null)
+		{
+			array = append;
+		}
+		else if (append != null)
+		{
+			T[] tmp = new T[array.Length + append.Length];
+			Array.Copy(array, tmp, array.Length);
+			Array.Copy(append, 0, tmp, array.Length, append.Length);
+			array = tmp;
 		}
 	}
 
@@ -1262,7 +1293,7 @@ sealed class IkvmcCompiler
 		ClassFile cf;
 		try
 		{
-			cf = new ClassFile(buf, 0, buf.Length, "<unknown>", ClassFileParseOptions.None);
+			cf = new ClassFile(buf, 0, buf.Length, "<unknown>", ClassFileParseOptions.None, null);
 		}
 		catch (ClassFormatError)
 		{
@@ -1290,7 +1321,7 @@ sealed class IkvmcCompiler
 		return true;
 	}
 
-	private static bool IsStubLegacy(CompilerOptions options, ZipEntry ze, byte[] data)
+	private static bool IsExcludedOrStubLegacy(CompilerOptions options, ZipEntry ze, byte[] data)
 	{
 		if (ze.Name.EndsWith(".class", StringComparison.OrdinalIgnoreCase))
 		{
@@ -1298,7 +1329,7 @@ sealed class IkvmcCompiler
 			{
 				bool stub;
 				string name = ClassFile.GetClassName(data, 0, data.Length, out stub);
-				if (stub && EmitStubWarning(options, data))
+				if (options.IsExcludedClass(name) || (stub && EmitStubWarning(options, data)))
 				{
 					// we use stubs to add references, but otherwise ignore them
 					return true;
@@ -1356,7 +1387,7 @@ sealed class IkvmcCompiler
 					{
 						found = true;
 						byte[] data = ReadFromZip(zf, ze);
-						if (IsStubLegacy(options, ze, data))
+						if (IsExcludedOrStubLegacy(options, ze, data))
 						{
 							continue;
 						}
@@ -1405,6 +1436,10 @@ sealed class IkvmcCompiler
 				{
 					bool stub;
 					string name = ClassFile.GetClassName(data, 0, data.Length, out stub);
+					if (options.IsExcludedClass(name))
+					{
+						return;
+					}
 					if (stub && EmitStubWarning(options, data))
 					{
 						// we use stubs to add references, but otherwise ignore them
@@ -1474,10 +1509,11 @@ sealed class IkvmcCompiler
 	}
 
 	//This processes an exclusion file with a single regular expression per line
-	private static void ProcessExclusionFile(List<string> classesToExclude, String filename)
+	private static void ProcessExclusionFile(ref string[] classesToExclude, string filename)
 	{
 		try 
 		{
+			List<string> list = classesToExclude == null ? new List<string>() : new List<string>(classesToExclude);
 			using(StreamReader file = new StreamReader(filename))
 			{
 				String line;
@@ -1486,12 +1522,27 @@ sealed class IkvmcCompiler
 					line = line.Trim();
 					if(!line.StartsWith("//") && line.Length != 0)
 					{
-						classesToExclude.Add(line);
+						list.Add(line);
 					}
 				}
 			}
+			classesToExclude = list.ToArray();
 		} 
 		catch(Exception x) 
+		{
+			throw new FatalCompilerErrorException(Message.ErrorReadingFile, filename, x.Message);
+		}
+	}
+
+	private static void ProcessAttributeAnnotationsClass(ref object[] annotations, string filename)
+	{
+		try
+		{
+			byte[] buf = File.ReadAllBytes(filename);
+			ClassFile cf = new ClassFile(buf, 0, buf.Length, null, ClassFileParseOptions.None, null);
+			ArrayAppend(ref annotations, cf.Annotations);
+		}
+		catch (Exception x)
 		{
 			throw new FatalCompilerErrorException(Message.ErrorReadingFile, filename, x.Message);
 		}
