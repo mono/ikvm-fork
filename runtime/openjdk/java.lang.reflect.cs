@@ -689,6 +689,8 @@ static class Java_java_lang_reflect_Proxy
 		{
 			return null;
 		}
+		// we need to explicitly register the type, because the type isn't visible by normal means
+		tw.GetClassLoader().SetWrapperForType(type, tw);
 		TypeWrapper[] wrappers2 = tw.Interfaces;
 		if (wrappers.Length != wrappers.Length)
 		{
@@ -705,29 +707,49 @@ static class Java_java_lang_reflect_Proxy
 	}
 }
 
-static class Java_java_lang_reflect_Field
+static class Java_java_lang_reflect_Executable
 {
-	public static object getDeclaredAnnotationsImpl(java.lang.reflect.Field thisField)
-	{
-		FieldWrapper fw = FieldWrapper.FromField(thisField);
-		return Java_java_lang_Class.AnnotationsToMap(fw.DeclaringType.GetClassLoader(), fw.DeclaringType.GetFieldAnnotations(fw));
-	}
-}
-
-static class Java_java_lang_reflect_Method
-{
-	public static object getDeclaredAnnotationsImpl(object methodOrConstructor)
-	{
-		MethodWrapper mw = MethodWrapper.FromMethodOrConstructor(methodOrConstructor);
-		return Java_java_lang_Class.AnnotationsToMap(mw.DeclaringType.GetClassLoader(), mw.DeclaringType.GetMethodAnnotations(mw));
-	}
-
-	public static object[][] getParameterAnnotationsImpl(object methodOrConstructor)
+	public static object[] getParameters0(java.lang.reflect.Executable _this)
 	{
 #if FIRST_PASS
 		return null;
 #else
-		MethodWrapper mw = MethodWrapper.FromMethodOrConstructor(methodOrConstructor);
+		MethodWrapper mw = MethodWrapper.FromExecutable(_this);
+		ClassFile.Method.MethodParametersEntry[] methodParameters = mw.DeclaringType.GetMethodParameters(mw);
+		if (methodParameters == null)
+		{
+			return null;
+		}
+		if (methodParameters == ClassFile.Method.MethodParametersEntry.Malformed)
+		{
+			throw new java.lang.reflect.MalformedParametersException();
+		}
+		java.lang.reflect.Parameter[] parameters = new java.lang.reflect.Parameter[methodParameters.Length];
+		for (int i = 0; i < parameters.Length; i++)
+		{
+			parameters[i] = new java.lang.reflect.Parameter(methodParameters[i].name, methodParameters[i].flags, _this, i);
+		}
+		return parameters;
+#endif
+	}
+
+	public static byte[] getTypeAnnotationBytes0(java.lang.reflect.Executable _this)
+	{
+		throw new NotImplementedException();
+	}
+
+	public static object declaredAnnotationsImpl(java.lang.reflect.Executable executable)
+	{
+		MethodWrapper mw = MethodWrapper.FromExecutable(executable);
+		return Java_java_lang_Class.AnnotationsToMap(mw.DeclaringType.GetClassLoader(), mw.DeclaringType.GetMethodAnnotations(mw));
+	}
+
+	public static object[][] sharedGetParameterAnnotationsImpl(java.lang.reflect.Executable executable)
+	{
+#if FIRST_PASS
+		return null;
+#else
+		MethodWrapper mw = MethodWrapper.FromExecutable(executable);
 		object[][] objAnn = mw.DeclaringType.GetParameterAnnotations(mw);
 		if (objAnn == null)
 		{
@@ -758,10 +780,27 @@ static class Java_java_lang_reflect_Method
 		return ann;
 #endif
 	}
+}
 
+static class Java_java_lang_reflect_Field
+{
+	public static object getDeclaredAnnotationsImpl(java.lang.reflect.Field thisField)
+	{
+		FieldWrapper fw = FieldWrapper.FromField(thisField);
+		return Java_java_lang_Class.AnnotationsToMap(fw.DeclaringType.GetClassLoader(), fw.DeclaringType.GetFieldAnnotations(fw));
+	}
+
+	public static byte[] getTypeAnnotationBytes0(java.lang.reflect.Field thisField)
+	{
+		throw new NotImplementedException();
+	}
+}
+
+static class Java_java_lang_reflect_Method
+{
 	public static object getDefaultValue(java.lang.reflect.Method thisMethod)
 	{
-		MethodWrapper mw = MethodWrapper.FromMethod(thisMethod);
+		MethodWrapper mw = MethodWrapper.FromExecutable(thisMethod);
 		return mw.DeclaringType.GetAnnotationDefault(mw);
 	}
 }

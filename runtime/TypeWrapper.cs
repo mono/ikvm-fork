@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2002-2013 Jeroen Frijters
+  Copyright (C) 2002-2014 Jeroen Frijters
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -91,14 +91,15 @@ namespace IKVM.Internal
 		private static readonly Type typeofGhostInterfaceAttribute = JVM.LoadType(typeof(GhostInterfaceAttribute));
 		private static readonly Type typeofExceptionIsUnsafeForMappingAttribute = JVM.LoadType(typeof(ExceptionIsUnsafeForMappingAttribute));
 		private static readonly Type typeofThrowsAttribute = JVM.LoadType(typeof(ThrowsAttribute));
-		private static readonly Type typeofHideFromReflectionAttribute = JVM.LoadType(typeof(HideFromReflectionAttribute));
 		private static readonly Type typeofHideFromJavaAttribute = JVM.LoadType(typeof(HideFromJavaAttribute));
+		private static readonly Type typeofHideFromJavaFlags = JVM.LoadType(typeof(HideFromJavaFlags));
 		private static readonly Type typeofNoPackagePrefixAttribute = JVM.LoadType(typeof(NoPackagePrefixAttribute));
 		private static readonly Type typeofAnnotationAttributeAttribute = JVM.LoadType(typeof(AnnotationAttributeAttribute));
 		private static readonly Type typeofNonNestedInnerClassAttribute = JVM.LoadType(typeof(NonNestedInnerClassAttribute));
 		private static readonly Type typeofNonNestedOuterClassAttribute = JVM.LoadType(typeof(NonNestedOuterClassAttribute));
 		private static readonly Type typeofEnclosingMethodAttribute = JVM.LoadType(typeof(EnclosingMethodAttribute));
 		private static readonly CustomAttributeBuilder hideFromJavaAttribute = new CustomAttributeBuilder(typeofHideFromJavaAttribute.GetConstructor(Type.EmptyTypes), new object[0]);
+		private static readonly CustomAttributeBuilder hideFromReflection = new CustomAttributeBuilder(typeofHideFromJavaAttribute.GetConstructor(new Type[] { typeofHideFromJavaFlags }), new object[] { HideFromJavaFlags.Reflection | HideFromJavaFlags.StackTrace | HideFromJavaFlags.StackWalk });
 
 		// we don't want beforefieldinit
 		static AttributeHelper() { }
@@ -449,31 +450,17 @@ namespace IKVM.Internal
 
 		internal static void HideFromReflection(MethodBuilder mb)
 		{
-			CustomAttributeBuilder cab = new CustomAttributeBuilder(typeofHideFromReflectionAttribute.GetConstructor(Type.EmptyTypes), new object[0]);
-			mb.SetCustomAttribute(cab);
-		}
-
-		internal static void HideFromReflection(MethodBuilder mb, int reason)
-		{
-			CustomAttributeBuilder cab = new CustomAttributeBuilder(typeofHideFromReflectionAttribute.GetConstructor(new Type[] { Types.Int32 }), new object[] { reason });
-			mb.SetCustomAttribute(cab);
+			mb.SetCustomAttribute(hideFromReflection);
 		}
 
 		internal static void HideFromReflection(FieldBuilder fb)
 		{
-			CustomAttributeBuilder cab = new CustomAttributeBuilder(typeofHideFromReflectionAttribute.GetConstructor(Type.EmptyTypes), new object[0]);
-			fb.SetCustomAttribute(cab);
+			fb.SetCustomAttribute(hideFromReflection);
 		}
 
 		internal static void HideFromReflection(PropertyBuilder pb)
 		{
-			CustomAttributeBuilder cab = new CustomAttributeBuilder(typeofHideFromReflectionAttribute.GetConstructor(Type.EmptyTypes), new object[0]);
-			pb.SetCustomAttribute(cab);
-		}
-
-		internal static bool IsHideFromReflection(MemberInfo mi)
-		{
-			return mi.IsDefined(typeofHideFromReflectionAttribute, false);
+			pb.SetCustomAttribute(hideFromReflection);
 		}
 
 		internal static void HideFromJava(TypeBuilder typeBuilder)
@@ -484,6 +471,12 @@ namespace IKVM.Internal
 		internal static void HideFromJava(MethodBuilder mb)
 		{
 			mb.SetCustomAttribute(hideFromJavaAttribute);
+		}
+
+		internal static void HideFromJava(MethodBuilder mb, HideFromJavaFlags flags)
+		{
+			CustomAttributeBuilder cab = new CustomAttributeBuilder(typeofHideFromJavaAttribute.GetConstructor(new Type[] { typeofHideFromJavaFlags }), new object[] { flags });
+			mb.SetCustomAttribute(cab);
 		}
 
 		internal static void HideFromJava(FieldBuilder fb)
@@ -506,23 +499,46 @@ namespace IKVM.Internal
 
 		internal static bool IsHideFromJava(MemberInfo mi)
 		{
+			return (GetHideFromJavaFlags(mi) & HideFromJavaFlags.Code) != 0;
+		}
+
+		internal static HideFromJavaFlags GetHideFromJavaFlags(MemberInfo mi)
+		{
 			// NOTE all privatescope fields and methods are "hideFromJava"
 			// because Java cannot deal with the potential name clashes
 			FieldInfo fi = mi as FieldInfo;
 			if(fi != null && (fi.Attributes & FieldAttributes.FieldAccessMask) == FieldAttributes.PrivateScope)
 			{
-				return true;
+				return HideFromJavaFlags.All;
 			}
 			MethodBase mb = mi as MethodBase;
 			if(mb != null && (mb.Attributes & MethodAttributes.MemberAccessMask) == MethodAttributes.PrivateScope)
 			{
-				return true;
+				return HideFromJavaFlags.All;
 			}
 			if (mi.Name.StartsWith("__<", StringComparison.Ordinal))
 			{
-				return true;
+				return HideFromJavaFlags.All;
 			}
-			return mi.IsDefined(typeofHideFromJavaAttribute, false);
+#if !STATIC_COMPILER && !STUB_GENERATOR
+			object[] attr = mi.GetCustomAttributes(typeofHideFromJavaAttribute, false);
+			if (attr.Length == 1)
+			{
+				return ((HideFromJavaAttribute)attr[0]).Flags;
+			}
+#else
+			IList<CustomAttributeData> attr = CustomAttributeData.__GetCustomAttributes(mi, typeofHideFromJavaAttribute, false);
+			if(attr.Count == 1)
+			{
+				IList<CustomAttributeTypedArgument> args = attr[0].ConstructorArguments;
+				if(args.Count == 1)
+				{
+					return (HideFromJavaFlags)args[0].Value;
+				}
+				return HideFromJavaFlags.All;
+			}
+#endif
+			return HideFromJavaFlags.None;
 		}
 
 #if STATIC_COMPILER
@@ -1412,14 +1428,40 @@ namespace IKVM.Internal
 			arr[arr.Length - 1] = obj;
 			return arr;
 		}
+
+		internal static T[] DropFirst<T>(T[] arr)
+		{
+			T[] narr = new T[arr.Length - 1];
+			Array.Copy(arr, 1, narr, 0, narr.Length);
+			return narr;
+		}
 	}
 
 	abstract class Annotation
 	{
+#if STATIC_COMPILER
+		internal static Annotation LoadAssemblyCustomAttribute(ClassLoaderWrapper loader, object[] def)
+		{
+			Debug.Assert(def[0].Equals(AnnotationDefaultAttribute.TAG_ANNOTATION));
+			string annotationClass = (string)def[1];
+			if (ClassFile.IsValidFieldSig(annotationClass))
+			{
+				try
+				{
+					return loader.RetTypeWrapperFromSig(annotationClass.Replace('/', '.')).Annotation;
+				}
+				catch (RetargetableJavaException)
+				{
+				}
+			}
+			return null;
+		}
+#endif
+
 #if !STUB_GENERATOR
 		// NOTE this method returns null if the type could not be found
 		// or if the type is not a Custom Attribute and we're not in the static compiler
-		internal static Annotation Load(ClassLoaderWrapper loader, object[] def)
+		internal static Annotation Load(TypeWrapper owner, object[] def)
 		{
 			Debug.Assert(def[0].Equals(AnnotationDefaultAttribute.TAG_ANNOTATION));
 			string annotationClass = (string)def[1];
@@ -1435,12 +1477,12 @@ namespace IKVM.Internal
 #endif
 			if (ClassFile.IsValidFieldSig(annotationClass))
 			{
-				try
+				TypeWrapper tw = owner.GetClassLoader().RetTypeWrapperFromSigNoThrow(annotationClass.Replace('/', '.'));
+				// Java allows inaccessible annotations to be used, so when the annotation isn't visible
+				// we fall back to using the DynamicAnnotationAttribute.
+				if (!tw.IsUnloadable && tw.IsAccessibleFrom(owner))
 				{
-					return loader.RetTypeWrapperFromSig(annotationClass.Replace('/', '.')).Annotation;
-				}
-				catch (RetargetableJavaException)
-				{
+					return tw.Annotation;
 				}
 			}
 			Tracer.Warning(Tracer.Compiler, "Unable to load annotation class {0}", annotationClass);
@@ -1733,6 +1775,26 @@ namespace IKVM.Internal
 		internal const string Bridge = "<bridge>";
 		internal const string Incomplete = "<incomplete>";
 		internal const string DefaultMethod = "<default>";
+		internal const string PrivateInterfaceInstanceMethod = "<piim>";
+	}
+
+	static class NestedTypeName
+	{
+		internal const string CallerID = "__<CallerID>";
+		internal const string InterfaceHelperMethods = "__<>IHM";
+		internal const string PrivateInterfaceMethods = "__<>PIM";
+
+		// interop types (mangled if necessary)
+		internal const string Fields = "__Fields";
+		internal const string Methods = "__Methods";
+		internal const string DefaultMethods = "__DefaultMethods";
+
+		// prefixes
+		internal const string ThreadLocal = "__<tls>_";
+		internal const string AtomicReferenceFieldUpdater = "__<ARFU>_";
+		internal const string IndyCallSite = "__<>IndyCS";
+		internal const string MethodHandleConstant = "__<>MHC";
+		internal const string MethodTypeConstant = "__<>MTC";
 	}
 
 	internal abstract class TypeWrapper
@@ -3088,6 +3150,11 @@ namespace IKVM.Internal
 			return null;
 		}
 
+		internal virtual ClassFile.Method.MethodParametersEntry[] GetMethodParameters(MethodWrapper mw)
+		{
+			return null;
+		}
+
 		internal virtual object[] GetFieldAnnotations(FieldWrapper fw)
 		{
 			return null;
@@ -3581,11 +3648,12 @@ namespace IKVM.Internal
 
 			private void AddMethod(List<MethodWrapper> list, MethodBase method)
 			{
-				if(!AttributeHelper.IsHideFromJava(method)
+				HideFromJavaFlags flags = AttributeHelper.GetHideFromJavaFlags(method);
+				if((flags & HideFromJavaFlags.Code) == 0
 					&& (remappedType.IsSealed || !method.Name.StartsWith("instancehelper_"))
 					&& (!remappedType.IsSealed || method.IsStatic))
 				{
-					list.Add(CreateRemappedMethodWrapper(method));
+					list.Add(CreateRemappedMethodWrapper(method, flags));
 				}
 			}
 
@@ -3595,15 +3663,16 @@ namespace IKVM.Internal
 				FieldInfo[] fields = type.GetFields(BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance);
 				foreach(FieldInfo field in fields)
 				{
-					if(!AttributeHelper.IsHideFromJava(field))
+					HideFromJavaFlags hideFromJavaFlags = AttributeHelper.GetHideFromJavaFlags(field);
+					if((hideFromJavaFlags & HideFromJavaFlags.Code) == 0)
 					{
-						list.Add(CreateFieldWrapper(field));
+						list.Add(CreateFieldWrapper(field, hideFromJavaFlags));
 					}
 				}
 				SetFields(list.ToArray());
 			}
 
-			private MethodWrapper CreateRemappedMethodWrapper(MethodBase mb)
+			private MethodWrapper CreateRemappedMethodWrapper(MethodBase mb, HideFromJavaFlags hideFromJavaflags)
 			{
 				ExModifiers modifiers = AttributeHelper.GetModifiers(mb, false);
 				string name;
@@ -3613,7 +3682,7 @@ namespace IKVM.Internal
 				MemberFlags flags = MemberFlags.None;
 				GetNameSigFromMethodBase(mb, out name, out sig, out retType, out paramTypes, ref flags);
 				MethodInfo mbHelper = mb as MethodInfo;
-				bool hideFromReflection = mbHelper != null && AttributeHelper.IsHideFromReflection(mbHelper);
+				bool hideFromReflection = mbHelper != null && (hideFromJavaflags & HideFromJavaFlags.Reflection) != 0;
 				MethodInfo mbNonvirtualHelper = null;
 				if(!mb.IsStatic && !mb.IsConstructor)
 				{
@@ -4187,9 +4256,7 @@ namespace IKVM.Internal
 				// to remove that
 				if(paramTypes.Length == sigparams.Length + 1)
 				{
-					TypeWrapper[] temp = paramTypes;
-					paramTypes = new TypeWrapper[sigparams.Length];
-					Array.Copy(temp, 1, paramTypes, 0, paramTypes.Length);
+					paramTypes = ArrayUtil.DropFirst(paramTypes);
 				}
 				Debug.Assert(sigparams.Length == paramTypes.Length);
 				for(int i = 0; i < sigparams.Length; i++)
@@ -4210,6 +4277,10 @@ namespace IKVM.Internal
 					{
 						name = name.Substring(NamePrefix.Bridge.Length);
 					}
+				}
+				if(method.IsSpecialName && method.Name.StartsWith(NamePrefix.DefaultMethod, StringComparison.Ordinal))
+				{
+					paramTypes = ArrayUtil.DropFirst(paramTypes);
 				}
 				System.Text.StringBuilder sb = new System.Text.StringBuilder("(");
 				foreach(TypeWrapper tw in paramTypes)
@@ -4262,25 +4333,39 @@ namespace IKVM.Internal
 			const BindingFlags flags = BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
 			foreach(ConstructorInfo ctor in type.GetConstructors(flags))
 			{
-				if(isDelegate && !ctor.IsStatic && !AttributeHelper.IsHideFromJava(ctor))
+				HideFromJavaFlags hideFromJavaFlags = AttributeHelper.GetHideFromJavaFlags(ctor);
+				if (isDelegate && !ctor.IsStatic && (hideFromJavaFlags & HideFromJavaFlags.Code) == 0)
 				{
 					methods.Add(new DelegateConstructorMethodWrapper(this, ctor));
 				}
 				else
 				{
-					AddMethodOrConstructor(ctor, methods);
+					AddMethodOrConstructor(ctor, hideFromJavaFlags, methods);
 				}
 			}
-			foreach(MethodInfo method in type.GetMethods(flags))
+			AddMethods(type.GetMethods(flags), methods);
+			if (type.IsInterface && (type.IsPublic || type.IsNestedPublic))
 			{
-				AddMethodOrConstructor(method, methods);
+				Type privateInterfaceMethods = type.GetNestedType(NestedTypeName.PrivateInterfaceMethods, BindingFlags.NonPublic);
+				if (privateInterfaceMethods != null)
+				{
+					AddMethods(privateInterfaceMethods.GetMethods(flags), methods);
+				}
 			}
 			SetMethods(methods.ToArray());
 		}
 
-		private void AddMethodOrConstructor(MethodBase method, List<MethodWrapper> methods)
+		private void AddMethods(MethodInfo[] add, List<MethodWrapper> methods)
 		{
-			if(AttributeHelper.IsHideFromJava(method))
+			foreach (MethodInfo method in add)
+			{
+				AddMethodOrConstructor(method, AttributeHelper.GetHideFromJavaFlags(method), methods);
+			}
+		}
+
+		private void AddMethodOrConstructor(MethodBase method, HideFromJavaFlags hideFromJavaFlags, List<MethodWrapper> methods)
+		{
+			if((hideFromJavaFlags & HideFromJavaFlags.Code) != 0)
 			{
 				if(method.Name.StartsWith(NamePrefix.Incomplete, StringComparison.Ordinal))
 				{
@@ -4300,7 +4385,7 @@ namespace IKVM.Internal
 					TypeWrapper retType;
 					TypeWrapper[] paramTypes;
 					MethodInfo mi = method as MethodInfo;
-					bool hideFromReflection = mi != null ? AttributeHelper.IsHideFromReflection(mi) : false;
+					bool hideFromReflection = mi != null && (hideFromJavaFlags & HideFromJavaFlags.Reflection) != 0;
 					MemberFlags flags = hideFromReflection ? MemberFlags.HideFromReflection : MemberFlags.None;
 					GetNameSigFromMethodBase(method, out name, out sig, out retType, out paramTypes, ref flags);
 					ExModifiers mods = AttributeHelper.GetModifiers(method, false);
@@ -4317,8 +4402,9 @@ namespace IKVM.Internal
 						methods.Add(new AccessStubMethodWrapper(this, name, sig, mi, mi, nonvirt ?? mi, retType, paramTypes, mods.Modifiers & ~Modifiers.Final, flags));
 						return;
 					}
+					MethodInfo impl;
 					MethodWrapper mw;
-					if (IsGhost)
+					if (IsGhost && (mods.Modifiers & (Modifiers.Static | Modifiers.Private)) == 0)
 					{
 						Type[] types = new Type[paramTypes.Length];
 						for (int i = 0; i < types.Length; i++)
@@ -4327,6 +4413,18 @@ namespace IKVM.Internal
 						}
 						MethodInfo ifmethod = TypeAsBaseType.GetMethod(method.Name, types);
 						mw = new GhostMethodWrapper(this, name, sig, ifmethod, (MethodInfo)method, retType, paramTypes, mods.Modifiers, flags);
+						if (!mw.IsAbstract)
+						{
+							((GhostMethodWrapper)mw).SetDefaultImpl(TypeAsSignatureType.GetMethod(NamePrefix.DefaultMethod + method.Name, types));
+						}
+					}
+					else if (method.IsSpecialName && method.Name.StartsWith(NamePrefix.PrivateInterfaceInstanceMethod, StringComparison.Ordinal))
+					{
+						mw = new PrivateInterfaceMethodWrapper(this, name, sig, method, retType, paramTypes, mods.Modifiers, flags);
+					}
+					else if (IsInterface && method.IsAbstract && (mods.Modifiers & Modifiers.Abstract) == 0 && (impl = GetDefaultInterfaceMethodImpl(mi, sig)) != null)
+					{
+						mw = new DefaultInterfaceMethodWrapper(this, name, sig, mi, impl, retType, paramTypes, mods.Modifiers, flags);
 					}
 					else
 					{
@@ -4355,6 +4453,30 @@ namespace IKVM.Internal
 					methods.Add(mw);
 				}
 			}
+		}
+
+		private MethodInfo GetDefaultInterfaceMethodImpl(MethodInfo method, string expectedSig)
+		{
+			foreach (MethodInfo candidate in method.DeclaringType.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly))
+			{
+				if (candidate.IsSpecialName
+					&& candidate.Name.StartsWith(NamePrefix.DefaultMethod, StringComparison.Ordinal)
+					&& candidate.Name.Length == method.Name.Length + NamePrefix.DefaultMethod.Length
+					&& candidate.Name.EndsWith(method.Name, StringComparison.Ordinal))
+				{
+					string name;
+					string sig;
+					TypeWrapper retType;
+					TypeWrapper[] paramTypes;
+					MemberFlags flags = MemberFlags.None;
+					GetNameSigFromMethodBase(candidate, out name, out sig, out retType, out paramTypes, ref flags);
+					if (sig == expectedSig)
+					{
+						return candidate;
+					}
+				}
+			}
+			return null;
 		}
 
 		private bool GetType2AccessStubs(string name, string sig, out MethodInfo stubVirt, out MethodInfo stubNonVirt)
@@ -4417,7 +4539,8 @@ namespace IKVM.Internal
 			PropertyInfo[] properties = type.GetProperties(flags);
 			foreach(FieldInfo field in rawfields)
 			{
-				if(AttributeHelper.IsHideFromJava(field))
+				HideFromJavaFlags hideFromJavaFlags = AttributeHelper.GetHideFromJavaFlags(field);
+				if((hideFromJavaFlags & HideFromJavaFlags.Code) != 0)
 				{
 					if(field.Name.StartsWith(NamePrefix.Type2AccessStubBackingField, StringComparison.Ordinal))
 					{
@@ -4444,7 +4567,7 @@ namespace IKVM.Internal
 					}
 					else
 					{
-						fields.Add(CreateFieldWrapper(field));
+						fields.Add(CreateFieldWrapper(field, hideFromJavaFlags));
 					}
 				}
 			}
@@ -4467,10 +4590,11 @@ namespace IKVM.Internal
 		{
 			// NOTE explictly defined properties (in map.xml) are decorated with HideFromJava,
 			// so we don't need to worry about them here
-			if(!AttributeHelper.IsHideFromJava(property))
+			HideFromJavaFlags hideFromJavaFlags = AttributeHelper.GetHideFromJavaFlags(property);
+			if((hideFromJavaFlags & HideFromJavaFlags.Code) == 0)
 			{
 				// is it a type 1 access stub?
-				if(AttributeHelper.IsHideFromReflection(property))
+				if((hideFromJavaFlags & HideFromJavaFlags.Reflection) != 0)
 				{
 					fields.Add(new CompiledAccessStubFieldWrapper(this, property, GetPropertyTypeWrapper(property)));
 				}
@@ -4673,7 +4797,7 @@ namespace IKVM.Internal
 			return ClassLoaderWrapper.GetWrapperFromType(parameterType);
 		}
 
-		private FieldWrapper CreateFieldWrapper(FieldInfo field)
+		private FieldWrapper CreateFieldWrapper(FieldInfo field, HideFromJavaFlags hideFromJavaFlags)
 		{
 			ExModifiers modifiers = AttributeHelper.GetModifiers(field, false);
 			TypeWrapper type = GetFieldTypeWrapper(field);
@@ -4681,7 +4805,7 @@ namespace IKVM.Internal
 			if(field.IsLiteral)
 			{
 				MemberFlags flags = MemberFlags.None;
-				if(AttributeHelper.IsHideFromReflection(field))
+				if((hideFromJavaFlags & HideFromJavaFlags.Reflection) != 0)
 				{
 					flags |= MemberFlags.HideFromReflection;
 				}
