@@ -577,7 +577,7 @@ namespace IKVM.Internal
 				{
 					System.IO.MemoryStream mem = new System.IO.MemoryStream();
 					bool includeNonPublicInterfaces = !"true".Equals(java.lang.Props.props.getProperty("ikvm.stubgen.skipNonPublicInterfaces"), StringComparison.OrdinalIgnoreCase);
-					IKVM.StubGen.StubGenerator.WriteClass(mem, tw, includeNonPublicInterfaces, false, false, false);
+					IKVM.StubGen.StubGenerator.WriteClass(mem, tw, includeNonPublicInterfaces, false, false, true);
 					buf = mem.ToArray();
 				}
 #endif
@@ -985,7 +985,7 @@ namespace IKVM.Internal
 #if FIRST_PASS
 			return false;
 #else
-			return access == Java_java_io_Win32FileSystem.ACCESS_READ && GetVfsEntry(path) != null;
+			return access == Java_java_io_WinNTFileSystem.ACCESS_READ && GetVfsEntry(path) != null;
 #endif
 		}
 

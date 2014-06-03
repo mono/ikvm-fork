@@ -103,7 +103,11 @@ namespace IKVM.StubGen
 				if (!mw.IsHideFromReflection && (mw.IsPublic || mw.IsProtected || includeNonPublicMembers))
 				{
 					FieldOrMethod m;
-					if (mw.Name == "<init>")
+					// HACK javac has a bug in com.sun.tools.javac.code.Types.isSignaturePolymorphic() where it assumes that
+					// MethodHandle doesn't have any native methods with an empty argument list
+					// (or at least it throws a NPE when it examines the signature of a method without any parameters when it
+					// accesses argtypes.tail.tail)
+					if (mw.Name == "<init>" || (tw == CoreClasses.java.lang.invoke.MethodHandle.Wrapper && (mw.Modifiers & Modifiers.Native) == 0))
 					{
 						m = writer.AddMethod(mw.Modifiers, mw.Name, mw.Signature.Replace('.', '/'));
 						CodeAttribute code = new CodeAttribute(writer);
@@ -187,18 +191,24 @@ namespace IKVM.StubGen
 						}
 						if (includeParameterNames)
 						{
-							ParameterInfo[] parameters = mb.GetParameters();
-							if (parameters.Length != 0)
+							MethodParametersEntry[] mp = tw.GetMethodParameters(mw);
+							if (mp == MethodParametersEntry.Malformed)
 							{
-								ushort[] names = new ushort[parameters.Length];
+								m.AddAttribute(new MethodParametersAttribute(writer, null, null));
+							}
+							else if (mp != null)
+							{
+								ushort[] names = new ushort[mp.Length];
+								ushort[] flags = new ushort[mp.Length];
 								for (int i = 0; i < names.Length; i++)
 								{
-									if (parameters[i].Name != null)
+									if (mp[i].name != null)
 									{
-										names[i] = writer.AddUtf8(parameters[i].Name);
+										names[i] = writer.AddUtf8(mp[i].name);
 									}
+									flags[i] = mp[i].flags;
 								}
-								m.AddAttribute(new MethodParametersAttribute(writer, names));
+								m.AddAttribute(new MethodParametersAttribute(writer, names, flags));
 							}
 						}
 					}
@@ -525,7 +535,7 @@ namespace IKVM.StubGen
 					"value",
 					targets.ToArray()
 				});
-				if (Experimental.JDK_8 && IsRepeatableAnnotation(tw))
+				if (IsRepeatableAnnotation(tw))
 				{
 					annot.Add(new object[] {
 						AnnotationDefaultAttribute.TAG_ANNOTATION,

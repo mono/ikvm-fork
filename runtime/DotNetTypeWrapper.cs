@@ -272,7 +272,7 @@ namespace IKVM.Internal
 			{
 				return false;
 			}
-			if (type.Assembly == IKVM.NativeCode.java.lang.SecurityManager.jniAssembly)
+			if (type.Assembly == Java_java_lang_SecurityManager.jniAssembly)
 			{
 				return false;
 			}
@@ -359,7 +359,7 @@ namespace IKVM.Internal
 				this.baseWrapper = baseWrapper;
 			}
 
-			internal override TypeWrapper BaseTypeWrapper
+			internal sealed override TypeWrapper BaseTypeWrapper
 			{
 				get { return baseWrapper; }
 			}
@@ -367,6 +367,11 @@ namespace IKVM.Internal
 			internal sealed override bool IsFakeNestedType
 			{
 				get { return true; }
+			}
+
+			internal sealed override Modifiers ReflectiveModifiers
+			{
+				get { return Modifiers | Modifiers.Static; }
 			}
 		}
 
@@ -452,14 +457,14 @@ namespace IKVM.Internal
 			}
 		}
 
-		private class DynamicOnlyMethodWrapper : MethodWrapper, ICustomInvoke
+		private class DynamicOnlyMethodWrapper : MethodWrapper
 		{
 			internal DynamicOnlyMethodWrapper(TypeWrapper declaringType, string name, string sig, TypeWrapper returnType, TypeWrapper[] parameterTypes, MemberFlags flags)
 				: base(declaringType, name, sig, null, returnType, parameterTypes, Modifiers.Public | Modifiers.Abstract, flags)
 			{
 			}
 
-			internal override bool IsDynamicOnly
+			internal sealed override bool IsDynamicOnly
 			{
 				get
 				{
@@ -468,7 +473,8 @@ namespace IKVM.Internal
 			}
 
 #if !STATIC_COMPILER && !FIRST_PASS && !STUB_GENERATOR
-			object ICustomInvoke.Invoke(object obj, object[] args)
+			[HideFromJava]
+			internal sealed override object Invoke(object obj, object[] args)
 			{
 				// a DynamicOnlyMethodWrapper is an interface method, but now that we've been called on an actual object instance,
 				// we can resolve to a real method and call that instead
@@ -482,14 +488,9 @@ namespace IKVM.Internal
 				{
 					throw new java.lang.IllegalAccessError(tw.Name + "." + this.Name + this.Signature);
 				}
-				if (mw.HasCallerID)
-				{
-					// an interface method cannot require a CallerID
-					throw new InvalidOperationException();
-				}
-				java.lang.reflect.Method m = (java.lang.reflect.Method)mw.ToMethodOrConstructor(true);
-				m.@override = true;
-				return m.invoke(obj, args, null);
+				mw.Link();
+				mw.ResolveMethod();
+				return mw.Invoke(obj, args);
 			}
 #endif // !STATIC_COMPILER && !FIRST_PASS && !STUB_GENERATOR
 		}
@@ -508,10 +509,10 @@ namespace IKVM.Internal
 #endif
 			}
 
-#if !STATIC_COMPILER && !STUB_GENERATOR
+#if !STATIC_COMPILER && !STUB_GENERATOR && !FIRST_PASS
 			internal object GetUnspecifiedValue()
 			{
-				return ((EnumFieldWrapper)GetFieldWrapper("__unspecified", this.SigName)).GetValue();
+				return GetFieldWrapper("__unspecified", this.SigName).GetValue(null);
 			}
 #endif
 
@@ -530,8 +531,8 @@ namespace IKVM.Internal
 #endif
 				}
 
-#if !STATIC_COMPILER && !STUB_GENERATOR
-				internal object GetValue()
+#if !STATIC_COMPILER && !STUB_GENERATOR && !FIRST_PASS
+				internal override object GetValue(object obj)
 				{
 					if (val == null)
 					{
@@ -539,9 +540,13 @@ namespace IKVM.Internal
 					}
 					return val;
 				}
+
+				internal override void SetValue(object obj, object value)
+				{
+				}
 #endif
 
-#if !STUB_GENERATOR
+#if EMITTERS
 				protected override void EmitGetImpl(CodeEmitter ilgen)
 				{
 #if STATIC_COMPILER
@@ -556,10 +561,10 @@ namespace IKVM.Internal
 				protected override void EmitSetImpl(CodeEmitter ilgen)
 				{
 				}
-#endif // !STUB_GENERATOR
+#endif // EMITTERS
 			}
 
-			private sealed class EnumValuesMethodWrapper : MethodWrapper, ICustomInvoke
+			private sealed class EnumValuesMethodWrapper : MethodWrapper
 			{
 				internal EnumValuesMethodWrapper(TypeWrapper declaringType)
 					: base(declaringType, "values", "()[" + declaringType.SigName, null, declaringType.MakeArrayType(1), TypeWrapper.EmptyArray, Modifiers.Public | Modifiers.Static, MemberFlags.None)
@@ -575,20 +580,20 @@ namespace IKVM.Internal
 				}
 
 #if !STATIC_COMPILER && !FIRST_PASS && !STUB_GENERATOR
-				object ICustomInvoke.Invoke(object obj, object[] args)
+				internal override object Invoke(object obj, object[] args)
 				{
 					FieldWrapper[] values = this.DeclaringType.GetFields();
 					object[] array = (object[])Array.CreateInstance(this.DeclaringType.TypeAsArrayType, values.Length);
 					for (int i = 0; i < values.Length; i++)
 					{
-						array[i] = ((EnumFieldWrapper)values[i]).GetValue();
+						array[i] = values[i].GetValue(null);
 					}
 					return array;
 				}
 #endif // !STATIC_COMPILER && !FIRST_PASS && !STUB_GENERATOR
 			}
 
-			private sealed class EnumValueOfMethodWrapper : MethodWrapper, ICustomInvoke
+			private sealed class EnumValueOfMethodWrapper : MethodWrapper
 			{
 				internal EnumValueOfMethodWrapper(TypeWrapper declaringType)
 					: base(declaringType, "valueOf", "(Ljava.lang.String;)" + declaringType.SigName, null, declaringType, new TypeWrapper[] { CoreClasses.java.lang.String.Wrapper }, Modifiers.Public | Modifiers.Static, MemberFlags.None)
@@ -604,14 +609,14 @@ namespace IKVM.Internal
 				}
 
 #if !STATIC_COMPILER && !FIRST_PASS && !STUB_GENERATOR
-				object ICustomInvoke.Invoke(object obj, object[] args)
+				internal override object Invoke(object obj, object[] args)
 				{
 					FieldWrapper[] values = this.DeclaringType.GetFields();
 					for (int i = 0; i < values.Length; i++)
 					{
 						if (values[i].Name.Equals(args[0]))
 						{
-							return ((EnumFieldWrapper)values[i]).GetValue();
+							return values[i].GetValue(null);
 						}
 					}
 					throw new java.lang.IllegalArgumentException("" + args[0]);
@@ -1800,7 +1805,7 @@ namespace IKVM.Internal
 				this.iface = iface;
 			}
 
-#if !STUB_GENERATOR
+#if EMITTERS
 			internal override bool EmitIntrinsic(EmitIntrinsicContext context)
 			{
 				TypeWrapper targetType = context.GetStackTypeWrapper(0, 0);
@@ -1851,7 +1856,7 @@ namespace IKVM.Internal
 				ilgen.Emit(OpCodes.Call, ByteCodeHelperMethods.DynamicCreateDelegate);
 				ilgen.Emit(OpCodes.Castclass, delegateConstructor.DeclaringType);
 			}
-#endif // !STUB_GENERATOR
+#endif // EMITTERS
 		}
 
 		private sealed class ByRefMethodWrapper : SmartMethodWrapper
@@ -1870,7 +1875,7 @@ namespace IKVM.Internal
 #endif
 			}
 
-#if !STUB_GENERATOR
+#if EMITTERS
 			protected override void CallImpl(CodeEmitter ilgen)
 			{
 				ConvertByRefArgs(ilgen);
@@ -1912,7 +1917,7 @@ namespace IKVM.Internal
 					}
 				}
 			}
-#endif // !STUB_GENERATOR
+#endif // EMITTERS
 		}
 
 		private sealed class EnumWrapMethodWrapper : MethodWrapper
@@ -1922,14 +1927,21 @@ namespace IKVM.Internal
 			{
 			}
 
-#if !STUB_GENERATOR
+#if EMITTERS
 			internal override void EmitCall(CodeEmitter ilgen)
 			{
 				// We don't actually need to do anything here!
 				// The compiler will insert a boxing operation after calling us and that will
 				// result in our argument being boxed (since that's still sitting on the stack).
 			}
-#endif // !STUB_GENERATOR
+#endif // EMITTERS
+
+#if !STATIC_COMPILER && !STUB_GENERATOR && !FIRST_PASS
+			internal override object Invoke(object obj, object[] args)
+			{
+				return Enum.ToObject(DeclaringType.TypeAsTBD, args[0]);
+			}
+#endif
 		}
 
 		internal sealed class EnumValueFieldWrapper : FieldWrapper
@@ -1942,7 +1954,7 @@ namespace IKVM.Internal
 				underlyingType = EnumHelper.GetUnderlyingType(tw.type);
 			}
 
-#if !STUB_GENERATOR
+#if EMITTERS
 			protected override void EmitGetImpl(CodeEmitter ilgen)
 			{
 				// NOTE if the reference on the stack is null, we *want* the NullReferenceException, so we don't use TypeWrapper.EmitUnbox
@@ -1960,7 +1972,19 @@ namespace IKVM.Internal
 				ilgen.Emit(OpCodes.Stobj, underlyingType);
 				ilgen.ReleaseTempLocal(temp);
 			}
-#endif // !STUB_GENERATOR
+#endif // EMITTERS
+
+#if !STUB_GENERATOR && !STATIC_COMPILER && !FIRST_PASS
+			internal override object GetValue(object obj)
+			{
+				return obj;
+			}
+
+			internal override void SetValue(object obj, object value)
+			{
+				obj.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance)[0].SetValue(obj, value);
+			}
+#endif
 		}
 
 		private sealed class ValueTypeDefaultCtor : MethodWrapper
@@ -1970,14 +1994,21 @@ namespace IKVM.Internal
 			{
 			}
 
-#if !STUB_GENERATOR
+#if EMITTERS
 			internal override void EmitNewobj(CodeEmitter ilgen)
 			{
 				CodeEmitterLocal local = ilgen.DeclareLocal(DeclaringType.TypeAsTBD);
 				ilgen.Emit(OpCodes.Ldloc, local);
 				ilgen.Emit(OpCodes.Box, DeclaringType.TypeAsTBD);
 			}
-#endif // !STUB_GENERATOR
+#endif // EMITTERS
+
+#if !STATIC_COMPILER && !STUB_GENERATOR && !FIRST_PASS
+			internal override object CreateInstance(object[] args)
+			{
+				return Activator.CreateInstance(DeclaringType.TypeAsTBD);
+			}
+#endif
 		}
 
 		private sealed class FinalizeMethodWrapper : MethodWrapper
@@ -1987,7 +2018,7 @@ namespace IKVM.Internal
 			{
 			}
 
-#if !STUB_GENERATOR
+#if EMITTERS
 			internal override void EmitCall(CodeEmitter ilgen)
 			{
 				ilgen.Emit(OpCodes.Pop);
@@ -1997,7 +2028,7 @@ namespace IKVM.Internal
 			{
 				ilgen.Emit(OpCodes.Pop);
 			}
-#endif // !STUB_GENERATOR
+#endif // EMITTERS
 		}
 
 		private sealed class CloneMethodWrapper : MethodWrapper
@@ -2007,7 +2038,7 @@ namespace IKVM.Internal
 			{
 			}
 
-#if !STUB_GENERATOR
+#if EMITTERS
 			internal override void EmitCall(CodeEmitter ilgen)
 			{
 				ilgen.Emit(OpCodes.Dup);
@@ -2027,7 +2058,7 @@ namespace IKVM.Internal
 			{
 				EmitCall(ilgen);
 			}
-#endif // !STUB_GENERATOR
+#endif // EMITTERS
 		}
 
 		protected override void LazyPublishMembers()
@@ -2269,9 +2300,7 @@ namespace IKVM.Internal
 					&& !typeof(java.io.Serializable.__Interface).IsAssignableFrom(type)
 					&& !methodsList.ContainsKey("writeReplace()Ljava.lang.Object;"))
 				{
-					methodsList.Add("writeReplace()Ljava.lang.Object;", new SimpleCallMethodWrapper(this, "writeReplace", "()Ljava.lang.Object;",
-						typeof(ikvm.@internal.Serialization).GetMethod("writeReplace"), CoreClasses.java.lang.Object.Wrapper, TypeWrapper.EmptyArray,
-						Modifiers.Private, MemberFlags.None, SimpleOpCode.Call, SimpleOpCode.Call));
+					methodsList.Add("writeReplace()Ljava.lang.Object;", new ExceptionWriteReplaceMethodWrapper(this));
 				}
 #endif // !STATIC_COMPILER && !STUB_GENERATOR && !FIRST_PASS
 
@@ -2280,6 +2309,31 @@ namespace IKVM.Internal
 				SetMethods(methodArray);
 			}
 		}
+
+#if !STATIC_COMPILER && !STUB_GENERATOR && !FIRST_PASS
+		private sealed class ExceptionWriteReplaceMethodWrapper : MethodWrapper
+		{
+			internal ExceptionWriteReplaceMethodWrapper(TypeWrapper declaringType)
+				: base(declaringType, "writeReplace", "()Ljava.lang.Object;", null, CoreClasses.java.lang.Object.Wrapper, TypeWrapper.EmptyArray, Modifiers.Private, MemberFlags.None)
+			{
+			}
+
+			internal override bool IsDynamicOnly
+			{
+				get { return true; }
+			}
+
+			internal override object Invoke(object obj, object[] args)
+			{
+				Exception x = (Exception)obj;
+				com.sun.xml.@internal.ws.developer.ServerSideException sse
+					= new com.sun.xml.@internal.ws.developer.ServerSideException(ikvm.extensions.ExtensionMethods.getClass(x).getName(), x.Message);
+				sse.initCause(x.InnerException);
+				sse.setStackTrace(ikvm.extensions.ExtensionMethods.getStackTrace(x));
+				return sse;
+			}
+		}
+#endif // !STATIC_COMPILER && !STUB_GENERATOR && !FIRST_PASS
 
 		private void InterfaceMethodStubHelper(Dictionary<string, MethodWrapper> methodsList, MethodBase method, string name, string sig, TypeWrapper[] args, TypeWrapper ret)
 		{
@@ -2317,7 +2371,7 @@ namespace IKVM.Internal
 			{
 			}
 
-#if !STUB_GENERATOR
+#if EMITTERS
 			internal override void EmitCall(CodeEmitter ilgen)
 			{
 				// we direct EmitCall to EmitCallvirt, because we always want to end up at the instancehelper method
@@ -2329,7 +2383,7 @@ namespace IKVM.Internal
 			{
 				m.EmitCallvirt(ilgen);
 			}
-#endif // !STUB_GENERATOR
+#endif // EMITTERS
 		}
 
 		internal static bool IsUnsupportedAbstractMethod(MethodBase mb)
@@ -2362,7 +2416,11 @@ namespace IKVM.Internal
 				}
 				type = type.GetElementType();
 			}
+#if STATIC_COMPILER || STUB_GENERATOR
+			return type.__IsFunctionPointer;
+#else
 			return false;
+#endif
 		}
 
 		private bool MakeMethodDescriptor(MethodBase mb, out string name, out string sig, out TypeWrapper[] args, out TypeWrapper ret)
@@ -2493,12 +2551,12 @@ namespace IKVM.Internal
 					foreach (ParameterInfo p in invoke.GetParameters())
 					{
 						// we don't support delegates with pointer parameters
-						if (p.ParameterType.IsPointer)
+						if (IsPointerType(p.ParameterType))
 						{
 							return false;
 						}
 					}
-					return true;
+					return !IsPointerType(invoke.ReturnType);
 				}
 			}
 			return false;
@@ -2668,7 +2726,7 @@ namespace IKVM.Internal
 			}
 		}
 
-#if !STUB_GENERATOR
+#if EMITTERS
 		internal override void EmitInstanceOf(CodeEmitter ilgen)
 		{
 			if (IsRemapped)
@@ -2698,7 +2756,7 @@ namespace IKVM.Internal
 			}
 			ilgen.EmitCastclass(type);
 		}
-#endif // !STUB_GENERATOR
+#endif // EMITTERS
 
 		internal override void Finish()
 		{
@@ -2724,6 +2782,26 @@ namespace IKVM.Internal
 				fw.Link();
 			}
 			finished = true;
+		}
+
+		internal override MethodParametersEntry[] GetMethodParameters(MethodWrapper mw)
+		{
+			MethodBase mb = mw.GetMethod();
+			if (mb == null)
+			{
+				return null;
+			}
+			ParameterInfo[] parameters = mb.GetParameters();
+			if (parameters.Length == 0)
+			{
+				return null;
+			}
+			MethodParametersEntry[] mp = new MethodParametersEntry[parameters.Length];
+			for (int i = 0; i < mp.Length; i++)
+			{
+				mp[i].name = parameters[i].Name;
+			}
+			return mp;
 		}
 
 #if !STATIC_COMPILER && !STUB_GENERATOR
@@ -2780,6 +2858,10 @@ namespace IKVM.Internal
 		// (i.e. injected into the assembly)
 		internal override bool IsPackageAccessibleFrom(TypeWrapper wrapper)
 		{
+			if (wrapper == DeclaringTypeWrapper)
+			{
+				return true;
+			}
 			if (!base.IsPackageAccessibleFrom(wrapper))
 			{
 				return false;
