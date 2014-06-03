@@ -1,16 +1,42 @@
 <?xml version="1.0"?>
+<!--
+  Copyright (C) 2002-2014 Jeroen Frijters
+
+  This software is provided 'as-is', without any express or implied
+  warranty.  In no event will the authors be held liable for any damages
+  arising from the use of this software.
+
+  Permission is granted to anyone to use this software for any purpose,
+  including commercial applications, and to alter it and redistribute it
+  freely, subject to the following restrictions:
+
+  1. The origin of this software must not be misrepresented; you must not
+     claim that you wrote the original software. If you use this software
+     in a product, an acknowledgment in the product documentation would be
+     appreciated but is not required.
+  2. Altered source versions must be plainly marked as such, and must not be
+     misrepresented as being the original software.
+  3. This notice may not be removed or altered from any source distribution.
+
+  Jeroen Frijters
+  jeroen@frijters.net
+  
+-->
 <project name="ClassLibrary" default="all">
     <include buildfile="../ikvm.include" />
     <property name="pathsep" value=":" />
     <property overwrite="false" name="signoption" value="" />
     <property overwrite="false" name="SkipSystemCoreDependency" value="false" />
-    <property name="OPENJDK_VERSION" value="OpenJDK 7u6 b24" />
-    <property name="OpenJDK7.dir" value="${project::get-base-directory()}/../../openjdk-7u6-b24" />
+    <property name="OPENJDK_VERSION" value="OpenJDK 8 b132" />
+    <property name="IMPLEMENTATION_VERSION" value="1.8.0" />
+    <property name="SPECIFICATION_VERSION" value="1.8" />
+    <property name="FULL_VERSION" value="1.8.0-b132" />
+    <property name="OpenJDK.dir" value="${project::get-base-directory()}/../../openjdk-8-b132" />
     <if test="${platform::is-win32()}">
         <property name="pathsep" value=";" />
     </if>
 
-    <target name="all" depends="classes rmi vfs resources core">
+    <target name="all" depends="classes rmi run-nasgen vfs resources core">
     </target>
 
     <target name="version">
@@ -26,7 +52,7 @@
         <copy file="allsources.lst" tofile="allsources.gen.lst" outputencoding="ascii" overwrite="true">
             <filterchain>
                 <replacetokens>
-                    <token key="OPENJDK7" value="${OpenJDK7.dir}" />
+                    <token key="OPENJDK" value="${OpenJDK.dir}" />
                 </replacetokens>
             </filterchain>
         </copy>
@@ -70,27 +96,38 @@
         </delete>
     </target>
 
-    <target name="classes" depends="version copyright allsources.gen.lst System.Core">
+    <target name="clean-classes">
         <delete>
             <fileset basedir="../classpath">
                 <include name="**.class"/>
             </fileset>
         </delete>
         <delete>
-            <fileset basedir="${OpenJDK7.dir}">
+            <fileset basedir="${OpenJDK.dir}">
                 <include name="**.class"/>
             </fileset>
         </delete>
         <delete>
             <fileset basedir=".">
                 <include name="**.class"/>
+            </fileset>
+        </delete>
+    </target>
+
+    <target name="clean-stubjars">
+        <delete>
+            <fileset basedir=".">
                 <include name="mscorlib.jar" />
                 <include name="System.jar" />
                 <include name="System.Core.jar" />
                 <include name="System.Data.jar" />
                 <include name="System.Drawing.jar" />
+                <include name="System.XML.jar" />
             </fileset>
         </delete>
+    </target>
+
+    <target name="stubjars" depends="clean-stubjars System.Core">
         <exec program="${project::get-base-directory()}/../bin/ikvmstub.exe" commandline="-bootstrap mscorlib" useruntimeengine="true" />
         <exec program="${project::get-base-directory()}/../bin/ikvmstub.exe" commandline="-bootstrap System" useruntimeengine="true" />
         <exec program="${project::get-base-directory()}/../bin/ikvmstub.exe" commandline="-bootstrap System.Core" useruntimeengine="true" unless="${SkipSystemCoreDependency}" />
@@ -99,20 +136,33 @@
         </if>
         <exec program="${project::get-base-directory()}/../bin/ikvmstub.exe" commandline="-bootstrap System.Data" useruntimeengine="true" />
         <exec program="${project::get-base-directory()}/../bin/ikvmstub.exe" commandline="-bootstrap System.Drawing" useruntimeengine="true" />
+        <exec program="${project::get-base-directory()}/../bin/ikvmstub.exe" commandline="-bootstrap System.XML" useruntimeengine="true" />
+    </target>
+
+    <target name="runtime-identity">
         <property name="IKVM.Runtime" value="IKVM.Runtime" />
+        <property name="IKVM.AWT.WinForms" value="IKVM.AWT.WinForms" />
         <if test="${signoption != ''}">
             <loadfile file="../tools/pubkey.txt" property="publickey" />
             <property name="IKVM.Runtime" value="IKVM.Runtime, PublicKey=${publickey}" />
+            <property name="IKVM.AWT.WinForms" value="IKVM.AWT.WinForms, PublicKey=${publickey}" />
         </if>
+    </target>
+
+    <target name="AssemblyInfo.java" depends="runtime-identity version copyright">
         <copy file="AssemblyInfo.java.in" tofile="AssemblyInfo.java" outputencoding="ascii" overwrite="true">
             <filterchain>
                 <replacetokens>
                     <token key="RUNTIME" value="${IKVM.Runtime}" />
+                    <token key="AWTWINFORMS" value="${IKVM.AWT.WinForms}" />
                     <token key="VERSION" value="${VERSION}" />
                     <token key="COPYRIGHT" value="${COPYRIGHT}" />
                 </replacetokens>
             </filterchain>
         </copy>
+    </target>
+
+    <target name="PropertyConstants.java" depends="version">
         <copy file="java/lang/PropertyConstants.java.in" tofile="java/lang/PropertyConstants.java" outputencoding="ascii" overwrite="true">
             <filterchain>
                 <replacetokens>
@@ -122,14 +172,28 @@
                 </replacetokens>
             </filterchain>
         </copy>
-        <exec program="javac" commandline="-J-Xmx1536M -implicit:none -g -nowarn -cp dummy -bootclasspath mscorlib.jar${pathsep}System.jar${pathsep}System.Core.jar${pathsep}System.Data.jar${pathsep}System.Drawing.jar${pathsep}../runtime/IKVM.Runtime.jar @allsources.gen.lst" useruntimeengine="false" />
+    </target>
+
+    <target name="classes" depends="clean-classes stubjars allsources.gen.lst AssemblyInfo.java PropertyConstants.java">
+        <exec program="javac" useruntimeengine="false">
+            <arg value="-J-Xmx1536M" />
+            <arg value="-g" />
+            <arg value="-nowarn" />
+            <arg value="-implicit:none" />
+            <arg value="-parameters" />
+            <arg line="-cp dummy" />
+            <arg value="-bootclasspath" />
+            <arg path="mscorlib.jar;System.jar;System.Core.jar;System.Data.jar;System.Drawing.jar;System.XML.jar;../runtime/IKVM.Runtime.jar" />
+            <arg value="@allsources.gen.lst" />
+        </exec>
     </target>
 
     <target name="rmi">
-        <property name="VMARGS" value="-J-client -J-Xmx896m -J-Xms128m -J-XX:PermSize=32m -J-XX:MaxPermSize=160m" />
-        <property name="CLASSPATH" value="${OpenJDK7.dir}/jdk/src/share/classes/${pathsep}${OpenJDK7.dir}/build/linux-amd64/impsrc/${pathsep}." />
-        <property name="OUTPUT" value="${OpenJDK7.dir}/build/linux-amd64/classes/" />
-        <property name="ARGS" value="${VMARGS} -bootclasspath ${CLASSPATH} -d ${OUTPUT}" />
+        <mkdir dir="rmistubs" />
+        <property name="VMARGS" value="-J-client -J-Xmx896m -J-Xms128m" />
+        <property name="CLASSPATH" value="mscorlib.jar${pathsep}System.Xml.jar${pathsep}${OpenJDK.dir}/jdk/src/share/classes/${pathsep}${OpenJDK.dir}/corba/src/share/classes" />
+        <property name="OUTPUT" value="rmistubs" />
+        <property name="ARGS" value="${VMARGS} -nowarn -bootclasspath ${CLASSPATH} -d ${OUTPUT}" />
         <exec program="rmic" commandline="${ARGS} -v1.1 sun.rmi.registry.RegistryImpl" />
         <exec program="rmic" commandline="${ARGS} -v1.1 sun.rmi.transport.DGCImpl" />
         <exec program="rmic" commandline="${ARGS} -v1.2 sun.rmi.server.Activation$ActivationSystemImpl" />
@@ -147,10 +211,30 @@
         <exec program="rmic" commandline="${ARGS} -iiop -standardPackage javax.management.remote.rmi.RMIServer" />
     </target>
 
+    <target name="run-nasgen">
+        <!-- nasgen doesn't understand the MethodParameters attribute, so we have to recompile the classes it processes without parameters -->
+        <exec program="javac" useruntimeengine="false">
+            <arg value="-XDignore.symbol.file" />
+            <arg value="-g" />
+            <arg value="-nowarn" />
+            <arg value="-implicit:none" />
+            <arg value="-cp" />
+            <arg path="mscorlib.jar;../runtime/IKVM.Runtime.jar" />
+            <arg value="${OpenJDK.dir}/nashorn/src/jdk/nashorn/internal/objects/*.java" />
+        </exec>
+        <exec program="java" useruntimeengine="false">
+            <arg line="-cp ${OpenJDK.dir}/nashorn/buildtools/nasgen/src" />
+            <arg value="jdk.nashorn.internal.tools.nasgen.Main" />
+            <arg value="${OpenJDK.dir}/nashorn/src" />
+            <arg value="jdk.nashorn.internal.objects" />
+            <arg value="${OpenJDK.dir}/nashorn/src" />
+        </exec>
+    </target>
+    
     <target name="vfs">
         <!-- This file is generated here, but it is added as a resource to IKVM.Runtime.dll, because Ref.Emit on .NET 1.1 doesn't support adding a raw resource. -->
         <zip zipfile="vfs.zip">
-            <fileset basedir="${OpenJDK7.dir}/build/linux-amd64/j2re-image">
+            <fileset basedir="${OpenJDK.dir}/build/linux-x86_64-normal-server-release/jdk">
                 <include name="lib/calendars.properties" />
                 <include name="lib/logging.properties" />
                 <include name="lib/management/management.properties" />
@@ -158,7 +242,7 @@
                 <include name="lib/psfontj2d.properties" />
                 <include name="lib/sound.properties" />
                 <include name="lib/cmm/*" />
-                <include name="lib/zi/**/*" />
+                <include name="lib/tzdb.dat" />
                 <include name="lib/currency.data" />
                 <include name="lib/security/java.policy" />
                 <include name="lib/security/java.security" />
@@ -169,7 +253,7 @@
                 -->
                 <include name="lib/security/US_export_policy.jar" />
             </fileset>
-            <fileset basedir="${OpenJDK7.dir}/jdk/src/windows">
+            <fileset basedir="${OpenJDK.dir}/jdk/src/windows">
                 <include name="lib/flavormap.properties" />
                 <include name="lib/content-types.properties" />
             </fileset>
@@ -177,13 +261,42 @@
         </target>
 
     <target name="resources">
-        <!-- resources that are not in @OPENJDK7@/build/linux-amd64/j2re-image/lib/resources.jar -->
+        <!-- collect the resources in a zip to make it easier to include them in the right assemblies -->
         <zip zipfile="resources.zip">
-            <fileset basedir="${OpenJDK7.dir}/jdk/src/share/classes">
+            <fileset basedir="${OpenJDK.dir}/build/linux-x86_64-normal-server-release/jdk/classes">
+                <include name="com/sun/corba/se/impl/orbutil/resources/*.properties" />
+                <include name="com/sun/rowset/*.properties" />
+                <include name="javax/swing/text/html/parser/html32.bdtd" />
+                <include name="sun/rmi/registry/resources/*.properties" />
+                <include name="sun/rmi/server/resources/*.properties" />
+                <include name="sun/text/resources/*IteratorData" />
+                <include name="sun/text/resources/th/*IteratorData_th" />
+                <include name="sun/text/resources/th/thai_dict" />
+            </fileset>
+            <fileset basedir="${OpenJDK.dir}/corba/src/share/classes">
+                <include name="**/*.properties" />
+            </fileset>
+            <fileset basedir="${OpenJDK.dir}/jdk/src/share/classes">
+                <include name="**/*.properties" />
+                <include name="**/*.gif" />
+                <include name="**/*.png" />
+                <include name="**/*.wav" />
+                <include name="com/sun/org/apache/xml/internal/security/resource/config.*" />
                 <include name="com/sun/swing/internal/plaf/**/*" />
-                <include name="com/sun/java/swing/plaf/**/*.properties" />
-                <include name="com/sun/java/swing/plaf/**/*.gif" />
-                <include name="sun/launcher/resources/*.properties" />
+                <include name="javax/swing/text/html/default.css" />
+                <include name="javax/swing/text/rtf/charsets/*.txt" />
+                <include name="sun/text/resources/**/*.icu" />
+            </fileset>
+            <fileset basedir="${OpenJDK.dir}/jaxp/src">
+                <include name="**/*.properties" />
+                <include name="**/*.res" />
+            </fileset>
+            <fileset basedir="${OpenJDK.dir}/jaxws/src/share/jaf_classes">
+                <include name="**/*.properties" />
+            </fileset>
+            <fileset basedir="${OpenJDK.dir}/jaxws/src/share/jaxws_classes">
+                <include name="**/*.properties" />
+                <include name="**/*.xml" />
             </fileset>
         </zip>
     </target>
@@ -192,13 +305,35 @@
         <copy file="response.txt" tofile="response.gen.txt" outputencoding="ascii" overwrite="true">
             <filterchain>
                 <replacetokens>
-                    <token key="OPENJDK7" value="${OpenJDK7.dir}" />
+                    <token key="OPENJDK" value="${OpenJDK.dir}" />
                 </replacetokens>
             </filterchain>
         </copy>
     </target>
 
-    <target name="core" depends="version response.gen.txt">
+    <target name="MANIFEST.MF">
+        <copy file="MANIFEST.MF.in" tofile="MANIFEST.MF" outputencoding="ascii" overwrite="true">
+            <filterchain>
+                <replacetokens>
+                    <token key="IMPLEMENTATION_VERSION" value="${IMPLEMENTATION_VERSION}" />
+                    <token key="SPECIFICATION_VERSION" value="${SPECIFICATION_VERSION}" />
+                </replacetokens>
+            </filterchain>
+        </copy>
+    </target>
+
+    <target name="nashorn-version">
+        <copy file="resources/nashorn/version.properties.in" tofile="resources/nashorn/version.properties" outputencoding="ascii" overwrite="true">
+            <filterchain>
+                <replacetokens>
+                    <token key="FULL_VERSION" value="${FULL_VERSION}" />
+                    <token key="IMPLEMENTATION_VERSION" value="${IMPLEMENTATION_VERSION}" />
+                </replacetokens>
+            </filterchain>
+        </copy>
+    </target>
+    
+    <target name="core" depends="version response.gen.txt MANIFEST.MF nashorn-version">
         <copy file="../bin/IKVM.Runtime.dll" todir="." />
         <copy file="../bin/IKVM.AWT.WinForms.dll" todir="." />
         <exec program="${project::get-base-directory()}/../bin/ikvmc.exe" useruntimeengine="true">
@@ -217,6 +352,8 @@
             <arg value="-r:IKVM.Runtime.dll" />
             <!-- we already know that the JNI assembly is not available, so suppress the warning -->
             <arg value="-nowarn:110" />
+            <arg value="-w4" />
+            <arg value="-noparameterreflection" />
             <arg value="-warnaserror" />
             <arg value="@response.gen.txt" />
         </exec>
@@ -225,11 +362,14 @@
             <exec program="${peverify}" commandline="-nologo IKVM.OpenJDK.Charsets.dll" />
             <exec program="${peverify}" commandline="-nologo IKVM.OpenJDK.Corba.dll" />
             <exec program="${peverify}" commandline="-nologo IKVM.OpenJDK.Core.dll" />
+            <exec program="${peverify}" commandline="-nologo IKVM.OpenJDK.Cldrdata.dll" />
             <exec program="${peverify}" commandline="-nologo IKVM.OpenJDK.Jdbc.dll" />
+            <exec program="${peverify}" commandline="-nologo IKVM.OpenJDK.Localedata.dll" />
             <exec program="${peverify}" commandline="-nologo IKVM.OpenJDK.Management.dll" />
             <exec program="${peverify}" commandline="-nologo IKVM.OpenJDK.Media.dll" />
             <exec program="${peverify}" commandline="-nologo IKVM.OpenJDK.Misc.dll" />
             <exec program="${peverify}" commandline="-nologo IKVM.OpenJDK.Naming.dll" />
+            <exec program="${peverify}" commandline="-nologo IKVM.OpenJDK.Nashorn.dll" />
             <exec program="${peverify}" commandline="-nologo IKVM.OpenJDK.Remoting.dll" />
             <exec program="${peverify}" commandline="-nologo IKVM.OpenJDK.Security.dll" />
             <exec program="${peverify}" commandline="-nologo IKVM.OpenJDK.SwingAWT.dll" />
@@ -268,7 +408,7 @@
         <copy file="tools.rsp" tofile="tools.gen.rsp" outputencoding="ascii" overwrite="true">
             <filterchain>
                 <replacetokens>
-                    <token key="OPENJDK7" value="${OpenJDK7.dir}" />
+                    <token key="OPENJDK" value="${OpenJDK.dir}" />
                 </replacetokens>
             </filterchain>
         </copy>
@@ -280,6 +420,8 @@
             <arg value="-version:${VERSION}" />
             <arg value="${signoption}" />
             <arg value="-warnaserror" />
+            <arg value="-w4" />
+            <arg value="-noparameterreflection" />
             <arg value="@tools.gen.rsp" />
         </exec>
     </target>
@@ -300,8 +442,13 @@
         <exec program="${project::get-base-directory()}/../bin/ikvmc.exe" useruntimeengine="true">
             <arg value="-version:${VERSION}" />
             <arg value="-out:../bin/javap.exe" />
-            <arg value="-main:sun.tools.javap.Main" />
+            <arg value="-main:com.sun.tools.javap.Main" />
             <arg value="-r:../bin/IKVM.OpenJDK.Tools.dll" />
+        </exec>
+        <exec program="${project::get-base-directory()}/../bin/ikvmc.exe" useruntimeengine="true">
+            <arg value="-version:${VERSION}" />
+            <arg value="-out:../bin/jjs.exe" />
+            <arg value="-main:jdk.nashorn.tools.Shell" />
         </exec>
     </target>
 
