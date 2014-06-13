@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2002-2009 Jeroen Frijters
+  Copyright (C) 2002-2014 Jeroen Frijters
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -48,14 +48,14 @@ namespace IKVM.Internal
 		private WorkaroundBaseClass workaroundBaseClass;
 
 		internal AotTypeWrapper(ClassFile f, CompilerClassLoader loader)
-			: base(f, loader, null)
+			: base(null, f, loader, null)
 		{
 		}
 
 		protected override Type GetBaseTypeForDefineType()
 		{
 			TypeWrapper baseTypeWrapper = BaseTypeWrapper;
-			if (this.IsPublic && this.IsAbstract && baseTypeWrapper.IsPublic && baseTypeWrapper.IsAbstract)
+			if (this.IsPublic && this.IsAbstract && baseTypeWrapper.IsPublic && baseTypeWrapper.IsAbstract && classLoader.WorkaroundAbstractMethodWidening)
 			{
 				// FXBUG
 				// if the current class widens access on an abstract base class method,
@@ -78,7 +78,7 @@ namespace IKVM.Internal
 				}
 				if (methods != null)
 				{
-					string name = "__WorkaroundBaseClass__." + Name;
+					string name = "__WorkaroundBaseClass__." + UnicodeUtil.EscapeInvalidSurrogates(Name);
 					while (!classLoader.ReserveName(name))
 					{
 						name = "_" + name;
@@ -297,10 +297,7 @@ namespace IKVM.Internal
 							}
 							if(!found)
 							{
-								FieldWrapper[] newFields = new FieldWrapper[fields.Length + 1];
-								Array.Copy(fields, newFields, fields.Length);
-								fields = newFields;
-								fields[fields.Length - 1] = FieldWrapper.Create(this, null, null, field.Name, field.Sig, new ExModifiers((Modifiers)field.Modifiers, false));
+								fields = ArrayUtil.Concat(fields, FieldWrapper.Create(this, null, null, field.Name, field.Sig, new ExModifiers((Modifiers)field.Modifiers, false)));
 							}
 						}
 					}
@@ -471,9 +468,7 @@ namespace IKVM.Internal
 				if(setter != null)
 				{
 					MethodWrapper mw = setter;
-					Type[] args = new Type[indexer.Length + 1];
-					indexer.CopyTo(args, 0);
-					args[args.Length - 1] = typeWrapper.TypeAsSignatureType;
+					Type[] args = ArrayUtil.Concat(indexer, typeWrapper.TypeAsSignatureType);
 					if(!CheckPropertyArgs(args, mw.GetParametersForDefineMethod()))
 					{
 						Console.Error.WriteLine("Warning: ignoring invalid property setter for {0}::{1}", clazz.Name, prop.Name);
@@ -510,36 +505,6 @@ namespace IKVM.Internal
 					}
 				}
 			}
-		}
-
-		protected override bool IsPInvokeMethod(ClassFile.Method m)
-		{
-			Dictionary<string, IKVM.Internal.MapXml.Class> mapxml = classLoader.GetMapXmlClasses();
-			if(mapxml != null)
-			{
-				IKVM.Internal.MapXml.Class clazz;
-				if(mapxml.TryGetValue(this.Name, out clazz) && clazz.Methods != null)
-				{
-					foreach(IKVM.Internal.MapXml.Method method in clazz.Methods)
-					{
-						if(method.Name == m.Name && method.Sig == m.Signature)
-						{
-							if(method.Attributes != null)
-							{
-								foreach(IKVM.Internal.MapXml.Attribute attr in method.Attributes)
-								{
-									if(StaticCompiler.GetType(classLoader, attr.Type) == JVM.Import(typeof(System.Runtime.InteropServices.DllImportAttribute)))
-									{
-										return true;
-									}
-								}
-							}
-							break;
-						}
-					}
-				}
-			}
-			return base.IsPInvokeMethod(m);
 		}
 
 		private static void MapModifiers(MapXml.MapModifiers mapmods, bool isConstructor, out bool setmodifiers, ref MethodAttributes attribs)
@@ -716,14 +681,14 @@ namespace IKVM.Internal
 							// are we adding a new method?
 							if(GetMethodWrapper(method.Name, method.Sig, false) == null)
 							{
-								if(method.body == null)
+								bool setmodifiers = false;
+								MethodAttributes attribs = method.MethodAttributes;
+								MapModifiers(method.Modifiers, false, out setmodifiers, ref attribs);
+								if(method.body == null && (attribs & MethodAttributes.Abstract) == 0)
 								{
 									Console.Error.WriteLine("Error: Method {0}.{1}{2} in xml remap file doesn't have a body.", clazz.Name, method.Name, method.Sig);
 									continue;
 								}
-								bool setmodifiers = false;
-								MethodAttributes attribs = method.MethodAttributes;
-								MapModifiers(method.Modifiers, false, out setmodifiers, ref attribs);
 								Type returnType;
 								Type[] parameterTypes;
 								MapSignature(method.Sig, out returnType, out parameterTypes);
@@ -739,9 +704,12 @@ namespace IKVM.Internal
 									typeBuilder.DefineMethodOverride(mb, (MethodInfo)mw.GetMethod());
 								}
 								CompilerClassLoader.AddDeclaredExceptions(mb, method.throws);
-								CodeEmitter ilgen = CodeEmitter.Create(mb);
-								method.Emit(classLoader, ilgen);
-								ilgen.DoEmit();
+								if(method.body != null)
+								{
+									CodeEmitter ilgen = CodeEmitter.Create(mb);
+									method.Emit(classLoader, ilgen);
+									ilgen.DoEmit();
+								}
 								if(method.Attributes != null)
 								{
 									foreach(IKVM.Internal.MapXml.Attribute attr in method.Attributes)
@@ -804,11 +772,14 @@ namespace IKVM.Internal
 			}
 		}
 
-		protected override MethodBuilder DefineGhostMethod(string name, MethodAttributes attribs, MethodWrapper mw)
+		protected override MethodBuilder DefineGhostMethod(TypeBuilder typeBuilder, string name, MethodAttributes attribs, MethodWrapper mw)
 		{
-			if(typeBuilderGhostInterface != null)
+			if(typeBuilderGhostInterface != null && mw.IsVirtual)
 			{
-				return mw.GetDefineMethodHelper().DefineMethod(this, typeBuilderGhostInterface, name, attribs);
+				DefineMethodHelper helper = mw.GetDefineMethodHelper();
+				MethodBuilder stub = helper.DefineMethod(this, typeBuilder, name, MethodAttributes.Public);
+				((GhostMethodWrapper)mw).SetGhostMethod(stub);
+				return helper.DefineMethod(this, typeBuilderGhostInterface, name, attribs);
 			}
 			return null;
 		}
@@ -820,11 +791,12 @@ namespace IKVM.Internal
 				// TODO consider adding methods from base interface and java.lang.Object as well
 				for(int i = 0; i < methods.Length; i++)
 				{
-					// skip <clinit>
-					if(!methods[i].IsStatic)
+					// skip <clinit> and non-virtual interface methods introduced in Java 8
+					GhostMethodWrapper gmw = methods[i] as GhostMethodWrapper;
+					if(gmw != null)
 					{
 						TypeWrapper[] args = methods[i].GetParameters();
-						MethodBuilder stub = methods[i].GetDefineMethodHelper().DefineMethod(this, typeBuilder, methods[i].Name, MethodAttributes.Public);
+						MethodBuilder stub = gmw.GetGhostMethod();
 						AddParameterMetadata(stub, methods[i]);
 						AttributeHelper.SetModifiers(stub, methods[i].Modifiers, methods[i].IsInternal);
 						CodeEmitter ilgen = CodeEmitter.Create(stub);
@@ -850,13 +822,32 @@ namespace IKVM.Internal
 							ilgen.Emit(OpCodes.Isinst, implementers[j].TypeAsTBD);
 							label = ilgen.DefineLabel();
 							ilgen.EmitBrfalse(label);
-							ilgen.Emit(OpCodes.Castclass, implementers[j].TypeAsTBD);
-							for(int k = 0; k < args.Length; k++)
-							{
-								ilgen.EmitLdarg(k + 1);
-							}
 							MethodWrapper mw = implementers[j].GetMethodWrapper(methods[i].Name, methods[i].Signature, true);
-							mw.EmitCallvirt(ilgen);
+							if(mw == null)
+							{
+								if(methods[i].IsAbstract)
+								{
+									// This should only happen for remapped types (defined in map.xml), because normally you'd get a miranda method.
+									throw new FatalCompilerErrorException(Message.GhostInterfaceMethodMissing, implementers[j].Name, Name, methods[i].Name, methods[i].Signature);
+								}
+								// We're inheriting a default method
+								ilgen.Emit(OpCodes.Pop);
+								ilgen.Emit(OpCodes.Ldarg_0);
+								for (int k = 0; k < args.Length; k++)
+								{
+									ilgen.EmitLdarg(k + 1);
+								}
+								ilgen.Emit(OpCodes.Call, DefaultInterfaceMethodWrapper.GetImpl(methods[i]));
+							}
+							else
+							{
+								ilgen.Emit(OpCodes.Castclass, implementers[j].TypeAsTBD);
+								for (int k = 0; k < args.Length; k++)
+								{
+									ilgen.EmitLdarg(k + 1);
+								}
+								mw.EmitCallvirt(ilgen);
+							}
 							ilgen.EmitBr(end);
 							ilgen.MarkLabel(label);
 						}

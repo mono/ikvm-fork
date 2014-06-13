@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2002-2013 Jeroen Frijters
+  Copyright (C) 2002-2014 Jeroen Frijters
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -197,13 +197,14 @@ namespace IKVM.Internal
 				{
 					StackFrame frame = st.GetFrame(i);
 					MethodBase m = frame.GetMethod();
-					if (m == null || m.DeclaringType == null)
+					if (m == null)
 					{
 						continue;
 					}
 					Type type = m.DeclaringType;
 					if (cleanStackTrace &&
-						(typeof(MethodBase).IsAssignableFrom(type)
+						(type == null
+						|| typeof(MethodBase).IsAssignableFrom(type)
 						|| type == typeof(RuntimeMethodHandle)
 						|| (type == typeof(Throwable) && m.Name == "instancehelper_fillInStackTrace")
 						|| (m.Name == "ToJava" && typeof(RetargetableJavaException).IsAssignableFrom(type))
@@ -298,6 +299,14 @@ namespace IKVM.Internal
 			{
 				return mb.Name.Substring(NamePrefix.DefaultMethod.Length);
 			}
+			else if(mb.Name.StartsWith(NamePrefix.Bridge, StringComparison.Ordinal))
+			{
+				return mb.Name.Substring(NamePrefix.Bridge.Length);
+			}
+			else if(mb.IsSpecialName)
+			{
+				return UnicodeUtil.UnescapeInvalidSurrogates(mb.Name);
+			}
 			else
 			{
 				return mb.Name;
@@ -309,12 +318,17 @@ namespace IKVM.Internal
 #if FIRST_PASS
 			return false;
 #else
-			return Java_sun_reflect_Reflection.IsHideFromJava(mb) || (mb.DeclaringType == typeof(ikvm.runtime.Util) && mb.Name == "mapException");
+			return (Java_sun_reflect_Reflection.GetHideFromJavaFlags(mb) & HideFromJavaFlags.StackTrace) != 0
+				|| (mb.DeclaringType == typeof(ikvm.runtime.Util) && mb.Name == "mapException");
 #endif
 		}
 
 		private static string getClassNameFromType(Type type)
 		{
+			if(type == null)
+			{
+				return "<Module>";
+			}
 			if(ClassLoaderWrapper.IsRemappedType(type))
 			{
 				return DotNetTypeWrapper.GetName(type);
@@ -337,7 +351,7 @@ namespace IKVM.Internal
 			if(ilOffset != StackFrame.OFFSET_UNKNOWN)
 			{
 				MethodBase mb = frame.GetMethod();
-				if(mb != null)
+				if(mb != null && mb.DeclaringType != null)
 				{
 					if(ClassLoaderWrapper.IsRemappedType(mb.DeclaringType))
 					{
@@ -356,7 +370,7 @@ namespace IKVM.Internal
 		private static string GetFileName(StackFrame frame)
 		{
 			MethodBase mb = frame.GetMethod();
-			if(mb != null)
+			if(mb != null && mb.DeclaringType != null)
 			{
 				if(ClassLoaderWrapper.IsRemappedType(mb.DeclaringType))
 				{
