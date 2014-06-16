@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2002-2013 Jeroen Frijters
+  Copyright (C) 2002-2014 Jeroen Frijters
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -60,13 +60,9 @@ static class ByteCodeHelperMethods
 	internal static readonly MethodInfo DynamicAaload;
 	internal static readonly MethodInfo DynamicAastore;
 	internal static readonly MethodInfo DynamicClassLiteral;
-	internal static readonly MethodInfo DynamicGetfield;
-	internal static readonly MethodInfo DynamicGetstatic;
 	internal static readonly MethodInfo DynamicMultianewarray;
 	internal static readonly MethodInfo DynamicNewarray;
 	internal static readonly MethodInfo DynamicNewCheckOnly;
-	internal static readonly MethodInfo DynamicPutfield;
-	internal static readonly MethodInfo DynamicPutstatic;
 	internal static readonly MethodInfo DynamicCreateDelegate;
 	internal static readonly MethodInfo DynamicLoadMethodType;
 	internal static readonly MethodInfo DynamicLoadMethodHandle;
@@ -81,8 +77,8 @@ static class ByteCodeHelperMethods
 	internal static readonly MethodInfo mapException;
 	internal static readonly MethodInfo GetDelegateForInvokeExact;
 	internal static readonly MethodInfo GetDelegateForInvoke;
+	internal static readonly MethodInfo GetDelegateForInvokeBasic;
 	internal static readonly MethodInfo LoadMethodType;
-	internal static readonly MethodInfo MethodHandleFromDelegate;
 	internal static readonly MethodInfo LinkIndyCallSite;
 
 	static ByteCodeHelperMethods()
@@ -92,47 +88,60 @@ static class ByteCodeHelperMethods
 #else
 		Type typeofByteCodeHelper = typeof(IKVM.Runtime.ByteCodeHelper);
 #endif
-		multianewarray = typeofByteCodeHelper.GetMethod("multianewarray");
-		multianewarray_ghost = typeofByteCodeHelper.GetMethod("multianewarray_ghost");
-		anewarray_ghost = typeofByteCodeHelper.GetMethod("anewarray_ghost");
-		f2i = typeofByteCodeHelper.GetMethod("f2i");
-		d2i = typeofByteCodeHelper.GetMethod("d2i");
-		f2l = typeofByteCodeHelper.GetMethod("f2l");
-		d2l = typeofByteCodeHelper.GetMethod("d2l");
-		arraycopy_fast = typeofByteCodeHelper.GetMethod("arraycopy_fast");
-		arraycopy_primitive_8 = typeofByteCodeHelper.GetMethod("arraycopy_primitive_8");
-		arraycopy_primitive_4 = typeofByteCodeHelper.GetMethod("arraycopy_primitive_4");
-		arraycopy_primitive_2 = typeofByteCodeHelper.GetMethod("arraycopy_primitive_2");
-		arraycopy_primitive_1 = typeofByteCodeHelper.GetMethod("arraycopy_primitive_1");
-		arraycopy = typeofByteCodeHelper.GetMethod("arraycopy");
-		DynamicCast = typeofByteCodeHelper.GetMethod("DynamicCast");
-		DynamicAaload = typeofByteCodeHelper.GetMethod("DynamicAaload");
-		DynamicAastore = typeofByteCodeHelper.GetMethod("DynamicAastore");
-		DynamicClassLiteral = typeofByteCodeHelper.GetMethod("DynamicClassLiteral");
-		DynamicGetfield = typeofByteCodeHelper.GetMethod("DynamicGetfield");
-		DynamicGetstatic = typeofByteCodeHelper.GetMethod("DynamicGetstatic");
-		DynamicMultianewarray = typeofByteCodeHelper.GetMethod("DynamicMultianewarray");
-		DynamicNewarray = typeofByteCodeHelper.GetMethod("DynamicNewarray");
-		DynamicNewCheckOnly = typeofByteCodeHelper.GetMethod("DynamicNewCheckOnly");
-		DynamicPutfield = typeofByteCodeHelper.GetMethod("DynamicPutfield");
-		DynamicPutstatic = typeofByteCodeHelper.GetMethod("DynamicPutstatic");
-		DynamicCreateDelegate = typeofByteCodeHelper.GetMethod("DynamicCreateDelegate");
-		DynamicLoadMethodType = typeofByteCodeHelper.GetMethod("DynamicLoadMethodType");
-		DynamicLoadMethodHandle = typeofByteCodeHelper.GetMethod("DynamicLoadMethodHandle");
-		DynamicBinderMemberLookup = typeofByteCodeHelper.GetMethod("DynamicBinderMemberLookup");
-		VerboseCastFailure = typeofByteCodeHelper.GetMethod("VerboseCastFailure");
-		SkipFinalizer = typeofByteCodeHelper.GetMethod("SkipFinalizer");
-		DynamicInstanceOf = typeofByteCodeHelper.GetMethod("DynamicInstanceOf");
-		volatileReadDouble = typeofByteCodeHelper.GetMethod("VolatileRead", new Type[] { Types.Double.MakeByRefType() });
-		volatileReadLong = typeofByteCodeHelper.GetMethod("VolatileRead", new Type[] { Types.Int64.MakeByRefType() });
-		volatileWriteDouble = typeofByteCodeHelper.GetMethod("VolatileWrite", new Type[] { Types.Double.MakeByRefType(), Types.Double });
-		volatileWriteLong = typeofByteCodeHelper.GetMethod("VolatileWrite", new Type[] { Types.Int64.MakeByRefType(), Types.Int64 });
-		mapException = typeofByteCodeHelper.GetMethod("MapException");
-		GetDelegateForInvokeExact = typeofByteCodeHelper.GetMethod("GetDelegateForInvokeExact");
-		GetDelegateForInvoke = typeofByteCodeHelper.GetMethod("GetDelegateForInvoke");
-		LoadMethodType = typeofByteCodeHelper.GetMethod("LoadMethodType");
-		MethodHandleFromDelegate = typeofByteCodeHelper.GetMethod("MethodHandleFromDelegate");
-		LinkIndyCallSite = typeofByteCodeHelper.GetMethod("LinkIndyCallSite");
+		multianewarray = GetHelper(typeofByteCodeHelper, "multianewarray");
+		multianewarray_ghost = GetHelper(typeofByteCodeHelper, "multianewarray_ghost");
+		anewarray_ghost = GetHelper(typeofByteCodeHelper, "anewarray_ghost");
+		f2i = GetHelper(typeofByteCodeHelper, "f2i");
+		d2i = GetHelper(typeofByteCodeHelper, "d2i");
+		f2l = GetHelper(typeofByteCodeHelper, "f2l");
+		d2l = GetHelper(typeofByteCodeHelper, "d2l");
+		arraycopy_fast = GetHelper(typeofByteCodeHelper, "arraycopy_fast");
+		arraycopy_primitive_8 = GetHelper(typeofByteCodeHelper, "arraycopy_primitive_8");
+		arraycopy_primitive_4 = GetHelper(typeofByteCodeHelper, "arraycopy_primitive_4");
+		arraycopy_primitive_2 = GetHelper(typeofByteCodeHelper, "arraycopy_primitive_2");
+		arraycopy_primitive_1 = GetHelper(typeofByteCodeHelper, "arraycopy_primitive_1");
+		arraycopy = GetHelper(typeofByteCodeHelper, "arraycopy");
+		DynamicCast = GetHelper(typeofByteCodeHelper, "DynamicCast");
+		DynamicAaload = GetHelper(typeofByteCodeHelper, "DynamicAaload");
+		DynamicAastore = GetHelper(typeofByteCodeHelper, "DynamicAastore");
+		DynamicClassLiteral = GetHelper(typeofByteCodeHelper, "DynamicClassLiteral");
+		DynamicMultianewarray = GetHelper(typeofByteCodeHelper, "DynamicMultianewarray");
+		DynamicNewarray = GetHelper(typeofByteCodeHelper, "DynamicNewarray");
+		DynamicNewCheckOnly = GetHelper(typeofByteCodeHelper, "DynamicNewCheckOnly");
+		DynamicCreateDelegate = GetHelper(typeofByteCodeHelper, "DynamicCreateDelegate");
+		DynamicLoadMethodType = GetHelper(typeofByteCodeHelper, "DynamicLoadMethodType");
+		DynamicLoadMethodHandle = GetHelper(typeofByteCodeHelper, "DynamicLoadMethodHandle");
+		DynamicBinderMemberLookup = GetHelper(typeofByteCodeHelper, "DynamicBinderMemberLookup");
+		VerboseCastFailure = GetHelper(typeofByteCodeHelper, "VerboseCastFailure");
+		SkipFinalizer = GetHelper(typeofByteCodeHelper, "SkipFinalizer");
+		DynamicInstanceOf = GetHelper(typeofByteCodeHelper, "DynamicInstanceOf");
+		volatileReadDouble = GetHelper(typeofByteCodeHelper, "VolatileRead", new Type[] { Types.Double.MakeByRefType() });
+		volatileReadLong = GetHelper(typeofByteCodeHelper, "VolatileRead", new Type[] { Types.Int64.MakeByRefType() });
+		volatileWriteDouble = GetHelper(typeofByteCodeHelper, "VolatileWrite", new Type[] { Types.Double.MakeByRefType(), Types.Double });
+		volatileWriteLong = GetHelper(typeofByteCodeHelper, "VolatileWrite", new Type[] { Types.Int64.MakeByRefType(), Types.Int64 });
+		mapException = GetHelper(typeofByteCodeHelper, "MapException");
+		GetDelegateForInvokeExact = GetHelper(typeofByteCodeHelper, "GetDelegateForInvokeExact");
+		GetDelegateForInvoke = GetHelper(typeofByteCodeHelper, "GetDelegateForInvoke");
+		GetDelegateForInvokeBasic = GetHelper(typeofByteCodeHelper, "GetDelegateForInvokeBasic");
+		LoadMethodType = GetHelper(typeofByteCodeHelper, "LoadMethodType");
+		LinkIndyCallSite = GetHelper(typeofByteCodeHelper, "LinkIndyCallSite");
+	}
+
+	private static MethodInfo GetHelper(Type type, string method)
+	{
+		return GetHelper(type, method, null);
+	}
+
+	private static MethodInfo GetHelper(Type type, string method, Type[] parameters)
+	{
+		MethodInfo mi = parameters == null ? type.GetMethod(method) : type.GetMethod(method, parameters);
+#if STATIC_COMPILER
+		if (mi == null)
+		{
+			throw new FatalCompilerErrorException(Message.RuntimeMethodMissing, method);
+		}
+#endif
+		return mi;
 	}
 }
 
@@ -162,66 +171,6 @@ struct MethodKey : IEquatable<MethodKey>
 
 static partial class MethodHandleUtil
 {
-	internal const int MaxArity = 8;
-	private static readonly Type typeofMHA;
-	private static readonly Type[] typeofMHV;
-	private static readonly Type[] typeofMH;
-
-	static MethodHandleUtil()
-	{
-#if STATIC_COMPILER
-		typeofMHA = StaticCompiler.GetRuntimeType("IKVM.Runtime.MHA`8");
-		typeofMHV = new Type[] {
-			StaticCompiler.GetRuntimeType("IKVM.Runtime.MHV"),
-			StaticCompiler.GetRuntimeType("IKVM.Runtime.MHV`1"),
-			StaticCompiler.GetRuntimeType("IKVM.Runtime.MHV`2"),
-			StaticCompiler.GetRuntimeType("IKVM.Runtime.MHV`3"),
-			StaticCompiler.GetRuntimeType("IKVM.Runtime.MHV`4"),
-			StaticCompiler.GetRuntimeType("IKVM.Runtime.MHV`5"),
-			StaticCompiler.GetRuntimeType("IKVM.Runtime.MHV`6"),
-			StaticCompiler.GetRuntimeType("IKVM.Runtime.MHV`7"),
-			StaticCompiler.GetRuntimeType("IKVM.Runtime.MHV`8"),
-		};
-		typeofMH = new Type[] {
-			null,
-			StaticCompiler.GetRuntimeType("IKVM.Runtime.MH`1"),
-			StaticCompiler.GetRuntimeType("IKVM.Runtime.MH`2"),
-			StaticCompiler.GetRuntimeType("IKVM.Runtime.MH`3"),
-			StaticCompiler.GetRuntimeType("IKVM.Runtime.MH`4"),
-			StaticCompiler.GetRuntimeType("IKVM.Runtime.MH`5"),
-			StaticCompiler.GetRuntimeType("IKVM.Runtime.MH`6"),
-			StaticCompiler.GetRuntimeType("IKVM.Runtime.MH`7"),
-			StaticCompiler.GetRuntimeType("IKVM.Runtime.MH`8"),
-			StaticCompiler.GetRuntimeType("IKVM.Runtime.MH`9"),
-		};
-#else
-		typeofMHA = typeof(IKVM.Runtime.MHA<,,,,,,,>);
-		typeofMHV = new Type[] {
-			typeof(IKVM.Runtime.MHV),
-			typeof(IKVM.Runtime.MHV<>),
-			typeof(IKVM.Runtime.MHV<,>),
-			typeof(IKVM.Runtime.MHV<,,>),
-			typeof(IKVM.Runtime.MHV<,,,>),
-			typeof(IKVM.Runtime.MHV<,,,,>),
-			typeof(IKVM.Runtime.MHV<,,,,,>),
-			typeof(IKVM.Runtime.MHV<,,,,,,>),
-			typeof(IKVM.Runtime.MHV<,,,,,,,>),
-		};
-		typeofMH = new Type[] {
-			null,
-			typeof(IKVM.Runtime.MH<>),
-			typeof(IKVM.Runtime.MH<,>),
-			typeof(IKVM.Runtime.MH<,,>),
-			typeof(IKVM.Runtime.MH<,,,>),
-			typeof(IKVM.Runtime.MH<,,,,>),
-			typeof(IKVM.Runtime.MH<,,,,,>),
-			typeof(IKVM.Runtime.MH<,,,,,,>),
-			typeof(IKVM.Runtime.MH<,,,,,,,>),
-			typeof(IKVM.Runtime.MH<,,,,,,,,>),
-		};
-#endif
-	}
-
 	internal static void EmitCallDelegateInvokeMethod(CodeEmitter ilgen, Type delegateType)
 	{
 		if (delegateType.IsGenericType)
@@ -243,7 +192,7 @@ static partial class MethodHandleUtil
 	private static void WrapArgs(CodeEmitter ilgen, Type type)
 	{
 		Type last = type.GetGenericArguments()[MaxArity - 1];
-		if (MethodHandleUtil.IsPackedArgsContainer(last))
+		if (IsPackedArgsContainer(last))
 		{
 			WrapArgs(ilgen, last);
 		}
@@ -274,28 +223,6 @@ static partial class MethodHandleUtil
 		}
 	}
 
-	internal static Type CreateDelegateType(TypeWrapper tw, MethodWrapper mw)
-	{
-		TypeWrapper[] args = mw.GetParameters();
-		if (!mw.IsStatic)
-		{
-			Array.Resize(ref args, args.Length + 1);
-			Array.Copy(args, 0, args, 1, args.Length - 1);
-			args[0] = tw;
-		}
-		return CreateDelegateType(args, mw.ReturnType);
-	}
-
-	internal static Type CreateDelegateType(TypeWrapper[] args, TypeWrapper ret)
-	{
-		Type[] typeArgs = new Type[args.Length];
-		for (int i = 0; i < args.Length; i++)
-		{
-			typeArgs[i] = args[i].TypeAsSignatureType;
-		}
-		return CreateDelegateType(typeArgs, ret.TypeAsSignatureType);
-	}
-
 	// for delegate types used for "ldc <MethodType>" we don't want ghost arrays to be erased
 	internal static Type CreateDelegateTypeForLoadConstant(TypeWrapper[] args, TypeWrapper ret)
 	{
@@ -322,57 +249,6 @@ static partial class MethodHandleUtil
 		{
 			return tw.TypeAsSignatureType;
 		}
-	}
-
-	private static Type CreateDelegateType(Type[] types, Type retType)
-	{
-		if (types.Length == 0 && retType == Types.Void)
-		{
-			return typeofMHV[0];
-		}
-		else if (types.Length > MaxArity)
-		{
-			int arity = types.Length;
-			int remainder = (arity - 8) % 7;
-			int count = (arity - 8) / 7;
-			if (remainder == 0)
-			{
-				remainder = 7;
-				count--;
-			}
-			Type last = typeofMHA.MakeGenericType(SubArray(types, types.Length - 8, 8));
-			for (int i = 0; i < count; i++)
-			{
-				Type[] temp = SubArray(types, types.Length - 8 - 7 * (i + 1), 8);
-				temp[7] = last;
-				last = typeofMHA.MakeGenericType(temp);
-			}
-			types = SubArray(types, 0, remainder + 1);
-			types[remainder] = last;
-		}
-		if (retType == Types.Void)
-		{
-			return typeofMHV[types.Length].MakeGenericType(types);
-		}
-		else
-		{
-			Array.Resize(ref types, types.Length + 1);
-			types[types.Length - 1] = retType;
-			return typeofMH[types.Length].MakeGenericType(types);
-		}
-	}
-
-	private static Type[] SubArray(Type[] inArray, int start, int length)
-	{
-		Type[] outArray = new Type[length];
-		Array.Copy(inArray, start, outArray, 0, length);
-		return outArray;
-	}
-
-	internal static bool IsPackedArgsContainer(Type type)
-	{
-		return type.IsGenericType
-			&& type.GetGenericTypeDefinition() == typeofMHA;
 	}
 }
 
@@ -448,7 +324,7 @@ sealed class Compiler
 		getClassFromTypeHandle2.Link();
 	}
 
-	private Compiler(DynamicTypeWrapper.FinishContext context, DynamicTypeWrapper clazz, MethodWrapper mw, ClassFile classFile, ClassFile.Method m, CodeEmitter ilGenerator, ClassLoaderWrapper classLoader)
+	private Compiler(DynamicTypeWrapper.FinishContext context, TypeWrapper host, DynamicTypeWrapper clazz, MethodWrapper mw, ClassFile classFile, ClassFile.Method m, CodeEmitter ilGenerator, ClassLoaderWrapper classLoader)
 	{
 		this.context = context;
 		this.clazz = clazz;
@@ -467,6 +343,17 @@ sealed class Compiler
 		replacedMethodWrappers = clazz.GetReplacedMethodsFor(mw);
 #endif
 
+		TypeWrapper[] args = mw.GetParameters();
+		for(int i = 0; i < args.Length; i++)
+		{
+			if(args[i].IsUnloadable)
+			{
+				ilGenerator.EmitLdarg(i + (m.IsStatic ? 0 : 1));
+				EmitDynamicCast(args[i]);
+				ilGenerator.Emit(OpCodes.Pop);
+			}
+		}
+
 		Profiler.Enter("MethodAnalyzer");
 		try
 		{
@@ -474,7 +361,7 @@ sealed class Compiler
 			{
 				JsrInliner.InlineJsrs(classLoader, mw, classFile, m);
 			}
-			MethodAnalyzer verifier = new MethodAnalyzer(clazz, mw, classFile, m, classLoader);
+			MethodAnalyzer verifier = new MethodAnalyzer(host, clazz, mw, classFile, m, classLoader);
 			exceptions = MethodAnalyzer.UntangleExceptionBlocks(classFile, m);
 			ma = verifier.GetCodeInfoAndErrors(exceptions, out harderrors);
 			localVars = new LocalVarInfo(ma, classFile, m, exceptions, mw, classLoader);
@@ -528,7 +415,6 @@ sealed class Compiler
 			}
 		}
 
-		TypeWrapper[] args = mw.GetParameters();
 		LocalVar[] locals = localVars.GetAllLocalVars();
 		foreach(LocalVar v in locals)
 		{
@@ -542,14 +428,13 @@ sealed class Compiler
 				}
 				else if(arg == 0)
 				{
-					tw = clazz;
+					continue;
 				}
 				else
 				{
 					tw = args[arg - 1];
 				}
 				if(!tw.IsUnloadable &&
-					v.type != VerifierTypeWrapper.UninitializedThis &&
 					(v.type != tw || tw.TypeAsLocalOrStackType != tw.TypeAsSignatureType))
 				{
 					v.builder = ilGenerator.DeclareLocal(GetLocalBuilderType(v.type));
@@ -645,7 +530,7 @@ sealed class Compiler
 			{
 				int startIndex = SafeFindPcIndex(lvt[i].start_pc);
 				int endIndex = SafeFindPcIndex(lvt[i].start_pc + lvt[i].length);
-				if(startIndex != -1 && endIndex != -1)
+				if(startIndex != -1 && endIndex != -1 && startIndex < endIndex)
 				{
 					if(startIndex > 0)
 					{
@@ -840,7 +725,7 @@ sealed class Compiler
 		}
 	}
 
-	internal static void Compile(DynamicTypeWrapper.FinishContext context, DynamicTypeWrapper clazz, MethodWrapper mw, ClassFile classFile, ClassFile.Method m, CodeEmitter ilGenerator, ref bool nonleaf)
+	internal static void Compile(DynamicTypeWrapper.FinishContext context, TypeWrapper host, DynamicTypeWrapper clazz, MethodWrapper mw, ClassFile classFile, ClassFile.Method m, CodeEmitter ilGenerator, ref bool nonleaf)
 	{
 		ClassLoaderWrapper classLoader = clazz.GetClassLoader();
 		if(classLoader.EmitDebugInfo)
@@ -870,26 +755,13 @@ sealed class Compiler
 				}
 			}
 		}
-		TypeWrapper[] args = mw.GetParameters();
-		for(int i = 0; i < args.Length; i++)
-		{
-			if(args[i].IsUnloadable)
-			{
-				Profiler.Count("EmitDynamicCast");
-				ilGenerator.EmitLdarg(i + (m.IsStatic ? 0 : 1));
-				ilGenerator.Emit(OpCodes.Ldstr, args[i].Name);
-				context.EmitCallerID(ilGenerator);
-				ilGenerator.Emit(OpCodes.Call, ByteCodeHelperMethods.DynamicCast);
-				ilGenerator.Emit(OpCodes.Pop);
-			}
-		}
 		Compiler c;
 		try
 		{
 			Profiler.Enter("new Compiler");
 			try
 			{
-				c = new Compiler(context, clazz, mw, classFile, m, ilGenerator, classLoader);
+				c = new Compiler(context, host, clazz, mw, classFile, m, ilGenerator, classLoader);
 			}
 			finally
 			{
@@ -1294,9 +1166,7 @@ sealed class Compiler
 						if(exceptionTypeWrapper.IsUnloadable)
 						{
 							Profiler.Count("EmitDynamicExceptionHandler");
-							ilGenerator.Emit(OpCodes.Ldstr, exceptionTypeWrapper.Name);
-							context.EmitCallerID(ilGenerator);
-							ilGenerator.Emit(OpCodes.Call, ByteCodeHelperMethods.DynamicInstanceOf);
+							EmitDynamicInstanceOf(exceptionTypeWrapper);
 						}
 						CodeEmitterLabel leave = ilGenerator.DefineLabel();
 						ilGenerator.EmitBrtrue(leave);
@@ -1452,6 +1322,19 @@ sealed class Compiler
 				{
 					ClassFile.ConstantPoolItemFieldref cpi = classFile.GetFieldref(instr.Arg1);
 					FieldWrapper field = cpi.GetField();
+					if (ma.GetStackTypeWrapper(i, 0).IsUnloadable)
+					{
+						if (field.IsProtected)
+						{
+							// downcast receiver to our type
+							clazz.EmitCheckcast(ilGenerator);
+						}
+						else
+						{
+							// downcast receiver to field declaring type
+							field.DeclaringType.EmitCheckcast(ilGenerator);
+						}
+					}
 					field.EmitGet(ilGenerator);
 					field.FieldTypeWrapper.EmitConvSignatureTypeToStackType(ilGenerator);
 					break;
@@ -1483,6 +1366,22 @@ sealed class Compiler
 					ClassFile.ConstantPoolItemFieldref cpi = classFile.GetFieldref(instr.Arg1);
 					FieldWrapper field = cpi.GetField();
 					TypeWrapper tw = field.FieldTypeWrapper;
+					if (ma.GetStackTypeWrapper(i, 1).IsUnloadable)
+					{
+						CodeEmitterLocal temp = ilGenerator.UnsafeAllocTempLocal(tw.TypeAsLocalOrStackType);
+						ilGenerator.Emit(OpCodes.Stloc, temp);
+						if (field.IsProtected)
+						{
+							// downcast receiver to our type
+							clazz.EmitCheckcast(ilGenerator);
+						}
+						else
+						{
+							// downcast receiver to field declaring type
+							field.DeclaringType.EmitCheckcast(ilGenerator);
+						}
+						ilGenerator.Emit(OpCodes.Ldloc, temp);
+					}
 					tw.EmitConvStackTypeToSignatureType(ilGenerator, ma.GetStackTypeWrapper(i, 0));
 					if(strictfp)
 					{
@@ -1541,7 +1440,9 @@ sealed class Compiler
 					break;
 				}
 				case NormalizedByteCode.__dynamic_invokestatic:
+				case NormalizedByteCode.__privileged_invokestatic:
 				case NormalizedByteCode.__invokestatic:
+				case NormalizedByteCode.__methodhandle_link:
 				{
 					MethodWrapper method = GetMethodCallEmitter(instr.NormalizedOpCode, instr.Arg1);
 					if(method.IsIntrinsic && method.EmitIntrinsic(new EmitIntrinsicContext(method, context, ilGenerator, ma, i, mw, classFile, code, flags)))
@@ -1553,7 +1454,7 @@ sealed class Compiler
 					CastInterfaceArgs(method.DeclaringType, method.GetParameters(), i, false);
 					if(method.HasCallerID)
 					{
-						context.EmitCallerID(ilGenerator);
+						context.EmitCallerID(ilGenerator, m.IsLambdaFormCompiled);
 					}
 					method.EmitCall(ilGenerator);
 					EmitReturnTypeConversion(method.ReturnType);
@@ -1563,17 +1464,20 @@ sealed class Compiler
 				case NormalizedByteCode.__dynamic_invokeinterface:
 				case NormalizedByteCode.__dynamic_invokevirtual:
 				case NormalizedByteCode.__dynamic_invokespecial:
+				case NormalizedByteCode.__privileged_invokevirtual:
+				case NormalizedByteCode.__privileged_invokespecial:
 				case NormalizedByteCode.__invokevirtual:
 				case NormalizedByteCode.__invokeinterface:
 				case NormalizedByteCode.__invokespecial:
 				case NormalizedByteCode.__methodhandle_invoke:
-				case NormalizedByteCode.__methodhandle_invokeexact:
 				{
-					bool isinvokespecial = instr.NormalizedOpCode == NormalizedByteCode.__invokespecial || instr.NormalizedOpCode == NormalizedByteCode.__dynamic_invokespecial;
+					bool isinvokespecial = instr.NormalizedOpCode == NormalizedByteCode.__invokespecial
+						|| instr.NormalizedOpCode == NormalizedByteCode.__dynamic_invokespecial
+						|| instr.NormalizedOpCode == NormalizedByteCode.__privileged_invokespecial;
 					MethodWrapper method = GetMethodCallEmitter(instr.NormalizedOpCode, instr.Arg1);
 					int argcount = method.GetParameters().Length;
 					TypeWrapper type = ma.GetRawStackTypeWrapper(i, argcount);
-					TypeWrapper thisType = SigTypeToClassName(type, method.DeclaringType);
+					TypeWrapper thisType = ComputeThisType(type, method, instr.NormalizedOpCode);
 
 					EmitIntrinsicContext eic = new EmitIntrinsicContext(method, context, ilGenerator, ma, i, mw, classFile, code, flags);
 					if(method.IsIntrinsic && method.EmitIntrinsic(eic))
@@ -1791,7 +1695,7 @@ sealed class Compiler
 					{
 						if(method.HasCallerID)
 						{
-							context.EmitCallerID(ilGenerator);
+							context.EmitCallerID(ilGenerator, m.IsLambdaFormCompiled);
 						}
 
 						if(isinvokespecial)
@@ -2002,8 +1906,7 @@ sealed class Compiler
 						Profiler.Count("EmitDynamicNewCheckOnly");
 						// this is here to make sure we throw the exception in the right location (before
 						// evaluating the constructor arguments)
-						ilGenerator.Emit(OpCodes.Ldstr, wrapper.Name);
-						context.EmitCallerID(ilGenerator);
+						EmitDynamicClassLiteral(wrapper);
 						ilGenerator.Emit(OpCodes.Call, ByteCodeHelperMethods.DynamicNewCheckOnly);
 					}
 					else if(wrapper != clazz && RequiresExplicitClassInit(wrapper, i + 1, flags))
@@ -2033,9 +1936,8 @@ sealed class Compiler
 					if(wrapper.IsUnloadable)
 					{
 						Profiler.Count("EmitDynamicMultianewarray");
-						ilGenerator.Emit(OpCodes.Ldstr, wrapper.Name);
 						ilGenerator.Emit(OpCodes.Ldloc, localArray);
-						context.EmitCallerID(ilGenerator);
+						EmitDynamicClassLiteral(wrapper);
 						ilGenerator.Emit(OpCodes.Call, ByteCodeHelperMethods.DynamicMultianewarray);
 					}
 					else if(wrapper.IsGhost || wrapper.IsGhostArray)
@@ -2066,8 +1968,7 @@ sealed class Compiler
 					if(wrapper.IsUnloadable)
 					{
 						Profiler.Count("EmitDynamicNewarray");
-						ilGenerator.Emit(OpCodes.Ldstr, wrapper.Name);
-						context.EmitCallerID(ilGenerator);
+						EmitDynamicClassLiteral(wrapper);
 						ilGenerator.Emit(OpCodes.Call, ByteCodeHelperMethods.DynamicNewarray);
 					}
 					else if(wrapper.IsGhost || wrapper.IsGhostArray)
@@ -2133,9 +2034,7 @@ sealed class Compiler
 					TypeWrapper wrapper = classFile.GetConstantPoolClassType(instr.Arg1);
 					if(wrapper.IsUnloadable)
 					{
-						ilGenerator.Emit(OpCodes.Ldstr, wrapper.Name);
-						context.EmitCallerID(ilGenerator);
-						ilGenerator.Emit(OpCodes.Call, ByteCodeHelperMethods.DynamicCast);
+						EmitDynamicCast(wrapper);
 					}
 					else
 					{
@@ -2148,9 +2047,7 @@ sealed class Compiler
 					TypeWrapper wrapper = classFile.GetConstantPoolClassType(instr.Arg1);
 					if(wrapper.IsUnloadable)
 					{
-						ilGenerator.Emit(OpCodes.Ldstr, wrapper.Name);
-						context.EmitCallerID(ilGenerator);
-						ilGenerator.Emit(OpCodes.Call, ByteCodeHelperMethods.DynamicInstanceOf);
+						EmitDynamicInstanceOf(wrapper);
 					}
 					else
 					{
@@ -2164,8 +2061,6 @@ sealed class Compiler
 					if(tw.IsUnloadable)
 					{
 						Profiler.Count("EmitDynamicAaload");
-						ilGenerator.Emit(OpCodes.Ldtoken, clazz.TypeAsTBD);
-						ilGenerator.Emit(OpCodes.Ldstr, tw.Name);
 						ilGenerator.Emit(OpCodes.Call, ByteCodeHelperMethods.DynamicAaload);
 					}
 					else
@@ -2238,8 +2133,6 @@ sealed class Compiler
 					if(tw.IsUnloadable)
 					{
 						Profiler.Count("EmitDynamicAastore");
-						ilGenerator.Emit(OpCodes.Ldtoken, clazz.TypeAsTBD);
-						ilGenerator.Emit(OpCodes.Ldstr, tw.Name);
 						ilGenerator.Emit(OpCodes.Call, ByteCodeHelperMethods.DynamicAastore);
 					}
 					else
@@ -2955,9 +2848,48 @@ sealed class Compiler
 			case ClassFile.ConstantType.MethodType:
 				context.GetValue<MethodTypeConstant>(constant).Emit(this, ilgen, constant);
 				break;
+#if !STATIC_COMPILER
+			case ClassFile.ConstantType.LiveObject:
+				context.EmitLiveObjectLoad(ilgen, classFile.GetConstantPoolConstantLiveObject(constant));
+				break;
+#endif
 			default:
 				throw new InvalidOperationException();
 		}
+	}
+
+	private void EmitDynamicCast(TypeWrapper tw)
+	{
+		Debug.Assert(tw.IsUnloadable);
+		Profiler.Count("EmitDynamicCast");
+		// NOTE it's important that we don't try to load the class if obj == null
+		CodeEmitterLabel ok = ilGenerator.DefineLabel();
+		ilGenerator.Emit(OpCodes.Dup);
+		ilGenerator.EmitBrfalse(ok);
+		EmitDynamicClassLiteral(tw);
+		ilGenerator.Emit(OpCodes.Call, ByteCodeHelperMethods.DynamicCast);
+		ilGenerator.MarkLabel(ok);
+	}
+
+	private void EmitDynamicInstanceOf(TypeWrapper tw)
+	{
+		// NOTE it's important that we don't try to load the class if obj == null
+		CodeEmitterLabel notnull = ilGenerator.DefineLabel();
+		CodeEmitterLabel end = ilGenerator.DefineLabel();
+		ilGenerator.Emit(OpCodes.Dup);
+		ilGenerator.EmitBrtrue(notnull);
+		ilGenerator.Emit(OpCodes.Pop);
+		ilGenerator.EmitLdc_I4(0);
+		ilGenerator.EmitBr(end);
+		ilGenerator.MarkLabel(notnull);
+		EmitDynamicClassLiteral(tw);
+		ilGenerator.Emit(OpCodes.Call, ByteCodeHelperMethods.DynamicInstanceOf);
+		ilGenerator.MarkLabel(end);
+	}
+
+	private void EmitDynamicClassLiteral(TypeWrapper tw)
+	{
+		context.EmitDynamicClassLiteral(ilGenerator, tw, m.IsLambdaFormCompiled);
 	}
 
 	private void EmitLoadClass(CodeEmitter ilgen, TypeWrapper tw)
@@ -2965,9 +2897,7 @@ sealed class Compiler
 		if (tw.IsUnloadable)
 		{
 			Profiler.Count("EmitDynamicClassLiteral");
-			ilgen.Emit(OpCodes.Ldstr, tw.Name);
-			context.EmitCallerID(ilgen);
-			ilgen.Emit(OpCodes.Call, ByteCodeHelperMethods.DynamicClassLiteral);
+			context.EmitDynamicClassLiteral(ilgen, tw, m.IsLambdaFormCompiled);
 		}
 		else
 		{
@@ -2989,23 +2919,20 @@ sealed class Compiler
 	{
 		private static readonly Type typeofOpenIndyCallSite;
 		private static readonly Type typeofCallSite;
-		private static readonly MethodInfo methodLookup;
+		private static readonly MethodWrapper methodLookup;
 
 		static InvokeDynamicBuilder()
 		{
-			Type typeofMethodHandles;
 #if STATIC_COMPILER
 			typeofOpenIndyCallSite = StaticCompiler.GetRuntimeType("IKVM.Runtime.IndyCallSite`1");
 			typeofCallSite = ClassLoaderWrapper.LoadClassCritical("java.lang.invoke.CallSite").TypeAsSignatureType;
-			typeofMethodHandles = ClassLoaderWrapper.LoadClassCritical("java.lang.invoke.MethodHandles").TypeAsBaseType;
-#elif FIRST_PASS
-			typeofMethodHandles = null;
-#else
+#elif !FIRST_PASS
 			typeofOpenIndyCallSite = typeof(IKVM.Runtime.IndyCallSite<>);
 			typeofCallSite = typeof(java.lang.invoke.CallSite);
-			typeofMethodHandles = typeof(java.lang.invoke.MethodHandles);
 #endif
-			methodLookup = typeofMethodHandles.GetMethod("lookup", new Type[] { CoreClasses.ikvm.@internal.CallerID.Wrapper.TypeAsSignatureType });
+			methodLookup = ClassLoaderWrapper.LoadClassCritical("java.lang.invoke.MethodHandles")
+				.GetMethodWrapper("lookup", "()Ljava.lang.invoke.MethodHandles$Lookup;", false);
+			methodLookup.Link();
 		}
 
 		internal static void Emit(Compiler compiler, ClassFile.ConstantPoolItemInvokeDynamic cpi, Type delegateType)
@@ -3025,7 +2952,7 @@ sealed class Compiler
 			}
 			TypeBuilder tb = compiler.context.DefineIndyCallSiteType();
 			FieldBuilder fb = tb.DefineField("value", typeofIndyCallSite, FieldAttributes.Static | FieldAttributes.Assembly);
-			CodeEmitter ilgen = CodeEmitter.Create(ReflectUtil.DefineTypeInitializer(tb));
+			CodeEmitter ilgen = CodeEmitter.Create(ReflectUtil.DefineTypeInitializer(tb, compiler.clazz.GetClassLoader()));
 			ilgen.Emit(OpCodes.Ldnull);
 			ilgen.Emit(OpCodes.Ldftn, CreateBootstrapStub(compiler, cpi, delegateType, tb, fb, methodGetTarget));
 			ilgen.Emit(OpCodes.Newobj, MethodHandleUtil.GetDelegateConstructor(delegateType));
@@ -3040,19 +2967,24 @@ sealed class Compiler
 
 		private static MethodBuilder CreateBootstrapStub(Compiler compiler, ClassFile.ConstantPoolItemInvokeDynamic cpi, Type delegateType, TypeBuilder tb, FieldBuilder fb, MethodInfo methodGetTarget)
 		{
-			TypeWrapper[] args = cpi.GetArgTypes();
-			Type[] argTypes = new Type[args.Length];
-			for (int i = 0; i < args.Length; i++)
+			Type[] args = Type.EmptyTypes;
+			if (delegateType.IsGenericType)
 			{
-				argTypes[i] = args[i].TypeAsSignatureType;
+				// MONOBUG we don't look at the invoke method directly here, because Mono doesn't support GetParameters() on a builder instantiation
+				args = delegateType.GetGenericArguments();
+				if (cpi.GetRetType() != PrimitiveTypeWrapper.VOID)
+				{
+					Array.Resize(ref args, args.Length - 1);
+				}
 			}
-			MethodBuilder mb = tb.DefineMethod("BootstrapStub", MethodAttributes.Static | MethodAttributes.PrivateScope, cpi.GetRetType().TypeAsSignatureType, argTypes);
+			MethodBuilder mb = tb.DefineMethod("BootstrapStub", MethodAttributes.Static | MethodAttributes.PrivateScope, cpi.GetRetType().TypeAsSignatureType, args);
 			CodeEmitter ilgen = CodeEmitter.Create(mb);
 			CodeEmitterLocal cs = ilgen.DeclareLocal(typeofCallSite);
 			CodeEmitterLocal ex = ilgen.DeclareLocal(Types.Exception);
+			CodeEmitterLocal ok = ilgen.DeclareLocal(Types.Boolean);
 			CodeEmitterLabel label = ilgen.DefineLabel();
 			ilgen.BeginExceptionBlock();
-			if (EmitCallBootstrapMethod(compiler, cpi, delegateType, ilgen))
+			if (EmitCallBootstrapMethod(compiler, cpi, ilgen, ok))
 			{
 				ilgen.Emit(OpCodes.Isinst, typeofCallSite);
 				ilgen.Emit(OpCodes.Stloc, cs);
@@ -3060,28 +2992,31 @@ sealed class Compiler
 			ilgen.EmitLeave(label);
 			ilgen.BeginCatchBlock(Types.Exception);
 			ilgen.Emit(OpCodes.Stloc, ex);
+			ilgen.Emit(OpCodes.Ldloc, ok);
+			CodeEmitterLabel label2 = ilgen.DefineLabel();
+			ilgen.EmitBrtrue(label2);
+			ilgen.Emit(OpCodes.Rethrow);
+			ilgen.MarkLabel(label2);
 			ilgen.EmitLeave(label);
-			ilgen.BeginFinallyBlock();
+			ilgen.EndExceptionBlock();
+			ilgen.MarkLabel(label);
 			ilgen.Emit(OpCodes.Ldsflda, fb);
 			ilgen.Emit(OpCodes.Ldloc, cs);
 			ilgen.Emit(OpCodes.Ldloc, ex);
 			ilgen.Emit(OpCodes.Call, ByteCodeHelperMethods.LinkIndyCallSite.MakeGenericMethod(delegateType));
-			ilgen.Emit(OpCodes.Endfinally);
-			ilgen.EndExceptionBlock();
-			ilgen.MarkLabel(label);
 			ilgen.Emit(OpCodes.Ldsfld, fb);
 			ilgen.Emit(OpCodes.Call, methodGetTarget);
 			for (int i = 0; i < args.Length; i++)
 			{
 				ilgen.EmitLdarg(i);
 			}
-			MethodHandleUtil.EmitCallDelegateInvokeMethod(ilgen, delegateType);
+			ilgen.Emit(OpCodes.Callvirt, MethodHandleUtil.GetDelegateInvokeMethod(delegateType));
 			ilgen.Emit(OpCodes.Ret);
 			ilgen.DoEmit();
 			return mb;
 		}
 
-		private static bool EmitCallBootstrapMethod(Compiler compiler, ClassFile.ConstantPoolItemInvokeDynamic cpi, Type delegateType, CodeEmitter ilgen)
+		private static bool EmitCallBootstrapMethod(Compiler compiler, ClassFile.ConstantPoolItemInvokeDynamic cpi, CodeEmitter ilgen, CodeEmitterLocal ok)
 		{
 			ClassFile.BootstrapMethod bsm = compiler.classFile.GetBootstrapMethod(cpi.BootstrapMethod);
 			if (3 + bsm.ArgumentCount > 255)
@@ -3094,10 +3029,12 @@ sealed class Compiler
 			ClassFile.ConstantPoolItemMI cpiMI;
 			if (mw == null && (cpiMI = mh.MemberConstantPoolItem as ClassFile.ConstantPoolItemMI) != null)
 			{
-				mw = new DynamicBinder().Get(compiler.context, ClassFile.RefKind.invokeStatic, cpiMI);
+				mw = new DynamicBinder().Get(compiler, mh.Kind, cpiMI, false);
 			}
-			if (mw == null || !mw.IsStatic)
+			if (mw == null || (!mw.IsStatic && !mw.IsConstructor))
 			{
+				ilgen.EmitLdc_I4(1);
+				ilgen.Emit(OpCodes.Stloc, ok);
 				ilgen.EmitThrow("java.lang.invoke.WrongMethodTypeException");
 				return false;
 			}
@@ -3112,6 +3049,8 @@ sealed class Compiler
 			}
 			else if (extraArgs != bsm.ArgumentCount)
 			{
+				ilgen.EmitLdc_I4(1);
+				ilgen.Emit(OpCodes.Stloc, ok);
 				ilgen.EmitThrow("java.lang.invoke.WrongMethodTypeException");
 				return false;
 			}
@@ -3120,11 +3059,11 @@ sealed class Compiler
 				fixedArgs = extraArgs;
 				varArgs = -1;
 			}
-			compiler.context.EmitCallerID(ilgen);
-			ilgen.Emit(OpCodes.Call, methodLookup);
+			compiler.context.EmitCallerID(ilgen, compiler.m.IsLambdaFormCompiled);
+			methodLookup.EmitCall(ilgen);
 			ilgen.Emit(OpCodes.Ldstr, cpi.Name);
 			parameters[1].EmitConvStackTypeToSignatureType(ilgen, CoreClasses.java.lang.String.Wrapper);
-			ilgen.Emit(OpCodes.Call, ByteCodeHelperMethods.LoadMethodType.MakeGenericMethod(delegateType));
+			ilgen.Emit(OpCodes.Call, ByteCodeHelperMethods.LoadMethodType.MakeGenericMethod(MethodHandleUtil.CreateDelegateTypeForLoadConstant(cpi.GetArgTypes(), cpi.GetRetType())));
 			parameters[2].EmitConvStackTypeToSignatureType(ilgen, CoreClasses.java.lang.invoke.MethodType.Wrapper);
 			for (int i = 0; i < fixedArgs; i++)
 			{
@@ -3143,7 +3082,16 @@ sealed class Compiler
 					ilgen.Emit(OpCodes.Stelem_Ref);
 				}
 			}
-			mw.EmitCall(ilgen);
+			ilgen.EmitLdc_I4(1);
+			ilgen.Emit(OpCodes.Stloc, ok);
+			if (mw.IsConstructor)
+			{
+				mw.EmitNewobj(ilgen);
+			}
+			else
+			{
+				mw.EmitCall(ilgen);
+			}
 			return true;
 		}
 
@@ -3243,7 +3191,7 @@ sealed class Compiler
 			temps[i] = ilgen.DeclareLocal(args[i].TypeAsSignatureType);
 			ilgen.Emit(OpCodes.Stloc, temps[i]);
 		}
-		Type delegateType = MethodHandleUtil.CreateDelegateType(args, cpi.GetRetType());
+		Type delegateType = MethodHandleUtil.CreateMethodHandleDelegateType(args, cpi.GetRetType());
 		InvokeDynamicBuilder.Emit(this, cpi, delegateType);
 		for (int i = 0; i < args.Length; i++)
 		{
@@ -3255,225 +3203,21 @@ sealed class Compiler
 	private sealed class MethodHandleConstant
 	{
 		private FieldBuilder field;
-		private bool dynamic;
 
 		internal void Emit(Compiler compiler, CodeEmitter ilgen, int index)
 		{
 			if (field == null)
 			{
-				field = CreateField(compiler, index, ref dynamic);
+				field = compiler.context.DefineDynamicMethodHandleCacheField();
 			}
-			if (dynamic)
-			{
-				ClassFile.ConstantPoolItemMethodHandle mh = compiler.classFile.GetConstantPoolConstantMethodHandle(index);
-				ilgen.Emit(OpCodes.Ldsflda, field);
-				ilgen.EmitLdc_I4((int)mh.Kind);
-				ilgen.Emit(OpCodes.Ldstr, mh.Class);
-				ilgen.Emit(OpCodes.Ldstr, mh.Name);
-				ilgen.Emit(OpCodes.Ldstr, mh.Signature);
-				compiler.context.EmitCallerID(ilgen);
-				ilgen.Emit(OpCodes.Call, ByteCodeHelperMethods.DynamicLoadMethodHandle);
-			}
-			else
-			{
-				ilgen.Emit(OpCodes.Ldsfld, field);
-			}
-		}
-
-		private static FieldBuilder CreateField(Compiler compiler, int index, ref bool dynamic)
-		{
 			ClassFile.ConstantPoolItemMethodHandle mh = compiler.classFile.GetConstantPoolConstantMethodHandle(index);
-			if (mh.GetClassType().IsUnloadable)
-			{
-				dynamic = true;
-				return compiler.context.DefineDynamicMethodHandleCacheField();
-			}
-			TypeWrapper[] args;
-			TypeWrapper arg0 = null;
-			TypeWrapper ret;
-			switch (mh.Kind)
-			{
-				case ClassFile.RefKind.getField:
-					args = new TypeWrapper[] { mh.Member.DeclaringType };
-					ret = ((FieldWrapper)mh.Member).FieldTypeWrapper;
-					break;
-				case ClassFile.RefKind.putField:
-					args = new TypeWrapper[] { mh.Member.DeclaringType, ((FieldWrapper)mh.Member).FieldTypeWrapper };
-					ret = PrimitiveTypeWrapper.VOID;
-					break;
-				case ClassFile.RefKind.getStatic:
-					args = TypeWrapper.EmptyArray;
-					ret = ((FieldWrapper)mh.Member).FieldTypeWrapper;
-					break;
-				case ClassFile.RefKind.putStatic:
-					args = new TypeWrapper[] { ((FieldWrapper)mh.Member).FieldTypeWrapper };
-					ret = PrimitiveTypeWrapper.VOID;
-					break;
-				case ClassFile.RefKind.invokeInterface:
-				case ClassFile.RefKind.invokeSpecial:
-				case ClassFile.RefKind.invokeVirtual:
-				case ClassFile.RefKind.invokeStatic:
-					if (mh.Member == null)
-					{
-						// it's MethodHandle.invoke[Exact]
-						ClassFile.ConstantPoolItemMI cpi = (ClassFile.ConstantPoolItemMI)mh.MemberConstantPoolItem;
-						args = cpi.GetArgTypes();
-						arg0 = mh.GetClassType();
-						ret = cpi.GetRetType();
-					}
-					else
-					{
-						MethodWrapper mw = (MethodWrapper)mh.Member;
-						args = mw.GetParameters();
-						ret = mw.ReturnType;
-						if (mw.IsStatic)
-						{
-							// no receiver type
-						}
-						else if (mw.IsProtected && !mw.IsAccessibleFrom(mh.GetClassType(), compiler.clazz, mh.GetClassType()))
-						{
-							arg0 = compiler.clazz;
-						}
-						else
-						{
-							arg0 = mh.GetClassType();
-						}
-					}
-					break;
-				case ClassFile.RefKind.newInvokeSpecial:
-					args = ((MethodWrapper)mh.Member).GetParameters();
-					ret = mh.Member.DeclaringType;
-					break;
-				default:
-					throw new InvalidOperationException();
-			}
-			if (arg0 != null)
-			{
-				TypeWrapper[] newArgs = new TypeWrapper[args.Length + 1];
-				newArgs[0] = arg0;
-				Array.Copy(args, 0, newArgs, 1, args.Length);
-				args = newArgs;
-			}
-			if (HasUnloadable(args, ret))
-			{
-				dynamic = true;
-				return compiler.context.DefineDynamicMethodHandleCacheField();
-			}
-
-			Type delegateType = MethodHandleUtil.CreateDelegateType(args, ret);
-			MethodInfo method;
-			if (mh.Kind == ClassFile.RefKind.invokeStatic
-				&& (method = (MethodInfo)((MethodWrapper)mh.Member).GetMethod()) != null
-				&& ((MethodWrapper)mh.Member).GetParameters().Length <= MethodHandleUtil.MaxArity)
-			{
-				// we can create a delegate that directly points to the target method
-			}
-			else
-			{
-				method = CreateDispatchStub(compiler, mh, delegateType);
-			}
-			TypeBuilder tb = compiler.context.DefineMethodHandleConstantType(index);
-			FieldBuilder field = tb.DefineField("value", CoreClasses.java.lang.invoke.MethodHandle.Wrapper.TypeAsSignatureType, FieldAttributes.Assembly | FieldAttributes.Static | FieldAttributes.InitOnly);
-			CodeEmitter ilgen = CodeEmitter.Create(ReflectUtil.DefineTypeInitializer(tb));
-			ilgen.Emit(OpCodes.Ldnull);
-			ilgen.Emit(OpCodes.Ldftn, method);
-			ilgen.Emit(OpCodes.Newobj, MethodHandleUtil.GetDelegateConstructor(delegateType));
-			ilgen.Emit(OpCodes.Call, ByteCodeHelperMethods.MethodHandleFromDelegate);
-			ilgen.Emit(OpCodes.Stsfld, field);
-			ilgen.Emit(OpCodes.Ret);
-			ilgen.DoEmit();
-			return field;
-		}
-
-		private static MethodInfo CreateDispatchStub(Compiler compiler, ClassFile.ConstantPoolItemMethodHandle mh, Type delegateType)
-		{
-			// the dispatch stub lives in the actual type (not the nested type that caches the value) to make sure
-			// we have access to everything that the actual type has access to
-			Type[] args = delegateType.GetGenericArguments();
-			Type ret = Types.Void;
-			// NOTE we can't use the method returned by GetDelegateInvokeMethod to determine the parameter types, due to Mono and CLR bugs
-			if (MethodHandleUtil.GetDelegateInvokeMethod(delegateType).ReturnType != Types.Void)
-			{
-				ret = args[args.Length - 1];
-				Array.Resize(ref args, args.Length - 1);
-			}
-			MethodBuilder mb = compiler.context.DefineMethodHandleDispatchStub(ret, args);
-			CodeEmitter ilgen = CodeEmitter.Create(mb);
-			if (args.Length > 0 && MethodHandleUtil.IsPackedArgsContainer(args[args.Length - 1]))
-			{
-				int packedArgPos = args.Length - 1;
-				Type packedArgType = args[packedArgPos];
-				for (int i = 0; i < packedArgPos; i++)
-				{
-					ilgen.EmitLdarg(i);
-				}
-				List<FieldInfo> fields = new List<FieldInfo>();
-			next:
-				args = args[args.Length - 1].GetGenericArguments();
-				for (int i = 0; i < MethodHandleUtil.MaxArity; i++)
-				{
-					if (i == MethodHandleUtil.MaxArity - 1 && MethodHandleUtil.IsPackedArgsContainer(args[i]))
-					{
-						FieldInfo field = packedArgType.GetField("t" + (i + 1));
-						packedArgType = field.FieldType;
-						fields.Add(field);
-						goto next;
-					}
-					else
-					{
-						ilgen.EmitLdarga(packedArgPos);
-						foreach (FieldInfo field in fields)
-						{
-							ilgen.Emit(OpCodes.Ldflda, field);
-						}
-						ilgen.Emit(OpCodes.Ldfld, packedArgType.GetField("t" + (i + 1)));
-					}
-				}
-			}
-			else
-			{
-				for (int i = 0; i < args.Length; i++)
-				{
-					ilgen.EmitLdarg(i);
-				}
-			}
-			switch (mh.Kind)
-			{
-				case ClassFile.RefKind.getField:
-				case ClassFile.RefKind.getStatic:
-					((FieldWrapper)mh.Member).EmitGet(ilgen);
-					break;
-				case ClassFile.RefKind.putField:
-				case ClassFile.RefKind.putStatic:
-					((FieldWrapper)mh.Member).EmitSet(ilgen);
-					break;
-				case ClassFile.RefKind.invokeInterface:
-				case ClassFile.RefKind.invokeVirtual:
-					if (mh.Member == null)
-					{
-						// it's a MethodHandle.invoke[Exact] constant MethodHandle
-						new MethodHandleMethodWrapper(compiler.context, compiler.clazz, (ClassFile.ConstantPoolItemMI)mh.MemberConstantPoolItem, mh.Name == "invokeExact").EmitCallvirt(ilgen);
-					}
-					else
-					{
-						((MethodWrapper)mh.Member).EmitCallvirt(ilgen);
-					}
-					break;
-				case ClassFile.RefKind.invokeStatic:
-					((MethodWrapper)mh.Member).EmitCall(ilgen);
-					break;
-				case ClassFile.RefKind.invokeSpecial:
-					ilgen.Emit(OpCodes.Callvirt, compiler.context.GetInvokeSpecialStub((MethodWrapper)mh.Member));
-					break;
-				case ClassFile.RefKind.newInvokeSpecial:
-					((MethodWrapper)mh.Member).EmitNewobj(ilgen);
-					break;
-				default:
-					throw new InvalidOperationException();
-			}
-			ilgen.Emit(OpCodes.Ret);
-			ilgen.DoEmit();
-			return mb;
+			ilgen.Emit(OpCodes.Ldsflda, field);
+			ilgen.EmitLdc_I4((int)mh.Kind);
+			ilgen.Emit(OpCodes.Ldstr, mh.Class);
+			ilgen.Emit(OpCodes.Ldstr, mh.Name);
+			ilgen.Emit(OpCodes.Ldstr, mh.Signature);
+			compiler.context.EmitCallerID(ilgen, compiler.m.IsLambdaFormCompiled);
+			ilgen.Emit(OpCodes.Call, ByteCodeHelperMethods.DynamicLoadMethodHandle);
 		}
 	}
 
@@ -3492,7 +3236,7 @@ sealed class Compiler
 			{
 				ilgen.Emit(OpCodes.Ldsflda, field);
 				ilgen.Emit(OpCodes.Ldstr, compiler.classFile.GetConstantPoolConstantMethodType(index).Signature);
-				compiler.context.EmitCallerID(ilgen);
+				compiler.context.EmitCallerID(ilgen, compiler.m.IsLambdaFormCompiled);
 				ilgen.Emit(OpCodes.Call, ByteCodeHelperMethods.DynamicLoadMethodType);
 			}
 			else
@@ -3516,7 +3260,7 @@ sealed class Compiler
 			{
 				TypeBuilder tb = compiler.context.DefineMethodTypeConstantType(index);
 				FieldBuilder field = tb.DefineField("value", CoreClasses.java.lang.invoke.MethodType.Wrapper.TypeAsSignatureType, FieldAttributes.Assembly | FieldAttributes.Static | FieldAttributes.InitOnly);
-				CodeEmitter ilgen = CodeEmitter.Create(ReflectUtil.DefineTypeInitializer(tb));
+				CodeEmitter ilgen = CodeEmitter.Create(ReflectUtil.DefineTypeInitializer(tb, compiler.clazz.GetClassLoader()));
 				Type delegateType = MethodHandleUtil.CreateDelegateTypeForLoadConstant(args, ret);
 				ilgen.Emit(OpCodes.Call, ByteCodeHelperMethods.LoadMethodType.MakeGenericMethod(delegateType));
 				ilgen.Emit(OpCodes.Stsfld, field);
@@ -3655,6 +3399,16 @@ sealed class Compiler
 						// we're calling a java.lang.Object method through a ghost interface reference,
 						// no ghost handling is needed
 					}
+					else if(VerifierTypeWrapper.IsThis(ma.GetRawStackTypeWrapper(instructionIndex, args.Length - 1 - i)))
+					{
+						// we're an instance method in a ghost interface, so the this pointer is a managed pointer to the
+						// wrapper value and if we're not calling another instance method on ourself, we need to load
+						// the wrapper value onto the stack
+						if(!instanceMethod || i != 0)
+						{
+							ilGenerator.Emit(OpCodes.Ldobj, args[i].TypeAsSignatureType);
+						}
+					}
 					else
 					{
 						CodeEmitterLocal ghost = ilGenerator.AllocTempLocal(Types.Object);
@@ -3718,41 +3472,46 @@ sealed class Compiler
 
 	private void DynamicGetPutField(Instruction instr, int i)
 	{
-		NormalizedByteCode bytecode = instr.NormalizedOpCode;
-		ClassFile.ConstantPoolItemFieldref cpi = classFile.GetFieldref(instr.Arg1);
-		bool write = (bytecode == NormalizedByteCode.__dynamic_putfield || bytecode == NormalizedByteCode.__dynamic_putstatic);
-		TypeWrapper wrapper = cpi.GetClassType();
-		TypeWrapper fieldTypeWrapper = cpi.GetFieldType();
-		if(write && !fieldTypeWrapper.IsUnloadable && fieldTypeWrapper.IsPrimitive)
-		{
-			ilGenerator.Emit(OpCodes.Box, fieldTypeWrapper.TypeAsTBD);
-		}
-		ilGenerator.Emit(OpCodes.Ldstr, cpi.Name);
-		ilGenerator.Emit(OpCodes.Ldstr, cpi.Signature);
-		ilGenerator.Emit(OpCodes.Ldstr, wrapper.Name);
-		context.EmitCallerID(ilGenerator);
-		switch(bytecode)
+		ClassFile.RefKind kind;
+		switch (instr.NormalizedOpCode)
 		{
 			case NormalizedByteCode.__dynamic_getfield:
 				Profiler.Count("EmitDynamicGetfield");
-				ilGenerator.Emit(OpCodes.Call, ByteCodeHelperMethods.DynamicGetfield);
-				EmitReturnTypeConversion(ilGenerator, fieldTypeWrapper);
+				kind = ClassFile.RefKind.getField;
 				break;
 			case NormalizedByteCode.__dynamic_putfield:
 				Profiler.Count("EmitDynamicPutfield");
-				ilGenerator.Emit(OpCodes.Call, ByteCodeHelperMethods.DynamicPutfield);
+				kind = ClassFile.RefKind.putField;
 				break;
 			case NormalizedByteCode.__dynamic_getstatic:
 				Profiler.Count("EmitDynamicGetstatic");
-				ilGenerator.Emit(OpCodes.Call, ByteCodeHelperMethods.DynamicGetstatic);
-				EmitReturnTypeConversion(ilGenerator, fieldTypeWrapper);
+				kind = ClassFile.RefKind.getStatic;
 				break;
 			case NormalizedByteCode.__dynamic_putstatic:
 				Profiler.Count("EmitDynamicPutstatic");
-				ilGenerator.Emit(OpCodes.Call, ByteCodeHelperMethods.DynamicPutstatic);
+				kind = ClassFile.RefKind.putStatic;
 				break;
 			default:
 				throw new InvalidOperationException();
+		}
+		ClassFile.ConstantPoolItemFieldref cpi = classFile.GetFieldref(instr.Arg1);
+		TypeWrapper fieldType = cpi.GetFieldType();
+		if (kind == ClassFile.RefKind.putField || kind == ClassFile.RefKind.putStatic)
+		{
+			fieldType.EmitConvStackTypeToSignatureType(ilGenerator, ma.GetStackTypeWrapper(i, 0));
+			if (strictfp)
+			{
+				// no need to convert
+			}
+			else if (fieldType == PrimitiveTypeWrapper.DOUBLE)
+			{
+				ilGenerator.Emit(OpCodes.Conv_R8);
+			}
+		}
+		context.GetValue<DynamicFieldBinder>(instr.Arg1 | ((byte)kind << 24)).Emit(this, cpi, kind);
+		if (kind == ClassFile.RefKind.getField || kind == ClassFile.RefKind.getStatic)
+		{
+			fieldType.EmitConvSignatureTypeToStackType(ilGenerator);
 		}
 	}
 
@@ -3787,69 +3546,187 @@ sealed class Compiler
 		private readonly DynamicTypeWrapper.FinishContext context;
 		private readonly TypeWrapper wrapper;
 		private readonly ClassFile.ConstantPoolItemMI cpi;
-		private readonly bool exact;
 
-		internal MethodHandleMethodWrapper(DynamicTypeWrapper.FinishContext context, TypeWrapper wrapper, ClassFile.ConstantPoolItemMI cpi, bool exact)
+		internal MethodHandleMethodWrapper(DynamicTypeWrapper.FinishContext context, TypeWrapper wrapper, ClassFile.ConstantPoolItemMI cpi)
 			: base(wrapper, cpi.Name, cpi.Signature, null, cpi.GetRetType(), cpi.GetArgTypes(), Modifiers.Public, MemberFlags.None)
 		{
 			this.context = context;
 			this.wrapper = wrapper;
 			this.cpi = cpi;
-			this.exact = exact;
+		}
+
+		private static void ToBasic(TypeWrapper tw, CodeEmitter ilgen)
+		{
+			if (tw.IsNonPrimitiveValueType)
+			{
+				tw.EmitBox(ilgen);
+			}
+			else if (tw.IsGhost)
+			{
+				tw.EmitConvSignatureTypeToStackType(ilgen);
+			}
+		}
+
+		private static void FromBasic(TypeWrapper tw, CodeEmitter ilgen)
+		{
+			if (tw.IsNonPrimitiveValueType)
+			{
+				tw.EmitUnbox(ilgen);
+			}
+			else if (tw.IsGhost)
+			{
+				tw.EmitConvStackTypeToSignatureType(ilgen, null);
+			}
+			else if (!tw.IsPrimitive && tw != CoreClasses.java.lang.Object.Wrapper)
+			{
+				tw.EmitCheckcast(ilgen);
+			}
 		}
 
 		internal override void EmitCall(CodeEmitter ilgen)
 		{
-			throw new InvalidOperationException();
-		}
+#if !FIRST_PASS && !STATIC_COMPILER
+			Debug.Assert(cpi.Name == "linkToVirtual" || cpi.Name == "linkToStatic" || cpi.Name == "linkToSpecial" || cpi.Name == "linkToInterface");
 
-		internal override void EmitCallvirt(CodeEmitter ilgen)
-		{
-			TypeWrapper[] args;
-			CodeEmitterLocal[] temps;
-			Type delegateType;
-			if (exact)
+			TypeWrapper[] args = cpi.GetArgTypes();
+			CodeEmitterLocal[] temps = new CodeEmitterLocal[args.Length];
+			for (int i = args.Length - 1; i > 0; i--)
 			{
-				args = cpi.GetArgTypes();
-				temps = new CodeEmitterLocal[args.Length];
-				for (int i = args.Length - 1; i >= 0; i--)
-				{
-					temps[i] = ilgen.DeclareLocal(args[i].TypeAsSignatureType);
-					ilgen.Emit(OpCodes.Stloc, temps[i]);
-				}
-				delegateType = MethodHandleUtil.CreateDelegateType(args, cpi.GetRetType());
-				MethodInfo mi = ByteCodeHelperMethods.GetDelegateForInvokeExact.MakeGenericMethod(delegateType);
-				ilgen.Emit(OpCodes.Call, mi);
+				temps[i] = ilgen.DeclareLocal(MethodHandleUtil.AsBasicType(args[i]));
+				ToBasic(args[i], ilgen);
+				ilgen.Emit(OpCodes.Stloc, temps[i]);
 			}
-			else
-			{
-				args = new TypeWrapper[cpi.GetArgTypes().Length + 1];
-				Array.Copy(cpi.GetArgTypes(), 0, args, 1, args.Length - 1);
-				args[0] = CoreClasses.java.lang.invoke.MethodHandle.Wrapper;
-				temps = new CodeEmitterLocal[args.Length];
-				for (int i = args.Length - 1; i >= 0; i--)
-				{
-					temps[i] = ilgen.DeclareLocal(args[i].TypeAsSignatureType);
-					ilgen.Emit(OpCodes.Stloc, temps[i]);
-				}
-				delegateType = MethodHandleUtil.CreateDelegateType(args, cpi.GetRetType());
-				MethodInfo mi = ByteCodeHelperMethods.GetDelegateForInvoke.MakeGenericMethod(delegateType);
-				Type typeofInvokeCache;
-#if STATIC_COMPILER
-				typeofInvokeCache = StaticCompiler.GetRuntimeType("IKVM.Runtime.InvokeCache`1");
-#else
-				typeofInvokeCache = typeof(IKVM.Runtime.InvokeCache<>);
-#endif
-				FieldBuilder fb = context.DefineMethodHandleInvokeCacheField(typeofInvokeCache.MakeGenericType(delegateType));
-				ilgen.Emit(OpCodes.Ldloc, temps[0]);
-				ilgen.Emit(OpCodes.Ldsflda, fb);
-				ilgen.Emit(OpCodes.Call, mi);
-			}
+			temps[0] = ilgen.DeclareLocal(args[0].TypeAsSignatureType);
+			ilgen.Emit(OpCodes.Stloc, temps[0]);
+			Array.Resize(ref args, args.Length - 1);
+			Type delegateType = MethodHandleUtil.CreateMemberWrapperDelegateType(args, cpi.GetRetType());
+			ilgen.Emit(OpCodes.Ldloc, temps[args.Length]);
+			ilgen.Emit(OpCodes.Ldfld, typeof(java.lang.invoke.MemberName).GetField("vmtarget", BindingFlags.Instance | BindingFlags.NonPublic));
+			ilgen.Emit(OpCodes.Castclass, delegateType);
 			for (int i = 0; i < args.Length; i++)
 			{
 				ilgen.Emit(OpCodes.Ldloc, temps[i]);
 			}
 			MethodHandleUtil.EmitCallDelegateInvokeMethod(ilgen, delegateType);
+			FromBasic(ReturnType, ilgen);
+#else
+			throw new InvalidOperationException();
+#endif
+		}
+
+		private void EmitInvokeExact(CodeEmitter ilgen)
+		{
+			TypeWrapper[] args = cpi.GetArgTypes();
+			CodeEmitterLocal[] temps = new CodeEmitterLocal[args.Length];
+			for (int i = args.Length - 1; i >= 0; i--)
+			{
+				temps[i] = ilgen.DeclareLocal(args[i].TypeAsSignatureType);
+				ilgen.Emit(OpCodes.Stloc, temps[i]);
+			}
+			Type delegateType = MethodHandleUtil.CreateMethodHandleDelegateType(args, cpi.GetRetType());
+			MethodInfo mi = ByteCodeHelperMethods.GetDelegateForInvokeExact.MakeGenericMethod(delegateType);
+			ilgen.Emit(OpCodes.Call, mi);
+			for (int i = 0; i < args.Length; i++)
+			{
+				ilgen.Emit(OpCodes.Ldloc, temps[i]);
+			}
+			MethodHandleUtil.EmitCallDelegateInvokeMethod(ilgen, delegateType);
+		}
+
+		private void EmitInvokeMaxArity(CodeEmitter ilgen)
+		{
+			TypeWrapper[] args = cpi.GetArgTypes();
+			CodeEmitterLocal[] temps = new CodeEmitterLocal[args.Length];
+			for (int i = args.Length - 1; i >= 0; i--)
+			{
+				temps[i] = ilgen.DeclareLocal(args[i].TypeAsSignatureType);
+				ilgen.Emit(OpCodes.Stloc, temps[i]);
+			}
+			Type delegateType = MethodHandleUtil.CreateMethodHandleDelegateType(args, cpi.GetRetType());
+			ilgen.Emit(OpCodes.Call, ByteCodeHelperMethods.LoadMethodType.MakeGenericMethod(delegateType));
+			CoreClasses.java.lang.invoke.MethodHandle.Wrapper.GetMethodWrapper("asType", "(Ljava.lang.invoke.MethodType;)Ljava.lang.invoke.MethodHandle;", false).EmitCallvirt(ilgen);
+			MethodInfo mi = ByteCodeHelperMethods.GetDelegateForInvokeExact.MakeGenericMethod(delegateType);
+			ilgen.Emit(OpCodes.Call, mi);
+			for (int i = 0; i < args.Length; i++)
+			{
+				ilgen.Emit(OpCodes.Ldloc, temps[i]);
+			}
+			MethodHandleUtil.EmitCallDelegateInvokeMethod(ilgen, delegateType);
+		}
+
+		private void EmitInvoke(CodeEmitter ilgen)
+		{
+			if (cpi.GetArgTypes().Length >= 127 && MethodHandleUtil.SlotCount(cpi.GetArgTypes()) >= 254)
+			{
+				EmitInvokeMaxArity(ilgen);
+				return;
+			}
+			TypeWrapper[] args = ArrayUtil.Concat(CoreClasses.java.lang.invoke.MethodHandle.Wrapper, cpi.GetArgTypes());
+			CodeEmitterLocal[] temps = new CodeEmitterLocal[args.Length];
+			for (int i = args.Length - 1; i >= 0; i--)
+			{
+				temps[i] = ilgen.DeclareLocal(args[i].TypeAsSignatureType);
+				ilgen.Emit(OpCodes.Stloc, temps[i]);
+			}
+			Type delegateType = MethodHandleUtil.CreateMethodHandleDelegateType(args, cpi.GetRetType());
+			MethodInfo mi = ByteCodeHelperMethods.GetDelegateForInvoke.MakeGenericMethod(delegateType);
+			Type typeofInvokeCache;
+#if STATIC_COMPILER
+			typeofInvokeCache = StaticCompiler.GetRuntimeType("IKVM.Runtime.InvokeCache`1");
+#else
+			typeofInvokeCache = typeof(IKVM.Runtime.InvokeCache<>);
+#endif
+			FieldBuilder fb = context.DefineMethodHandleInvokeCacheField(typeofInvokeCache.MakeGenericType(delegateType));
+			ilgen.Emit(OpCodes.Ldloc, temps[0]);
+			ilgen.Emit(OpCodes.Ldsflda, fb);
+			ilgen.Emit(OpCodes.Call, mi);
+			for (int i = 0; i < args.Length; i++)
+			{
+				ilgen.Emit(OpCodes.Ldloc, temps[i]);
+			}
+			MethodHandleUtil.EmitCallDelegateInvokeMethod(ilgen, delegateType);
+		}
+
+		private void EmitInvokeBasic(CodeEmitter ilgen)
+		{
+			TypeWrapper[] args = ArrayUtil.Concat(CoreClasses.java.lang.invoke.MethodHandle.Wrapper, cpi.GetArgTypes());
+			CodeEmitterLocal[] temps = new CodeEmitterLocal[args.Length];
+			for (int i = args.Length - 1; i > 0; i--)
+			{
+				temps[i] = ilgen.DeclareLocal(MethodHandleUtil.AsBasicType(args[i]));
+				ToBasic(args[i], ilgen);
+				ilgen.Emit(OpCodes.Stloc, temps[i]);
+			}
+			temps[0] = ilgen.DeclareLocal(args[0].TypeAsSignatureType);
+			ilgen.Emit(OpCodes.Stloc, temps[0]);
+			Type delegateType = MethodHandleUtil.CreateMemberWrapperDelegateType(args, cpi.GetRetType());
+			MethodInfo mi = ByteCodeHelperMethods.GetDelegateForInvokeBasic.MakeGenericMethod(delegateType);
+			ilgen.Emit(OpCodes.Ldloc, temps[0]);
+			ilgen.Emit(OpCodes.Call, mi);
+			for (int i = 0; i < args.Length; i++)
+			{
+				ilgen.Emit(OpCodes.Ldloc, temps[i]);
+			}
+			MethodHandleUtil.EmitCallDelegateInvokeMethod(ilgen, delegateType);
+			FromBasic(ReturnType, ilgen);
+		}
+
+		internal override void EmitCallvirt(CodeEmitter ilgen)
+		{
+			switch (cpi.Name)
+			{
+				case "invokeExact":
+					EmitInvokeExact(ilgen);
+					break;
+				case "invoke":
+					EmitInvoke(ilgen);
+					break;
+				case "invokeBasic":
+					EmitInvokeBasic(ilgen);
+					break;
+				default:
+					throw new InvalidOperationException();
+			}
 		}
 
 		internal override void EmitNewobj(CodeEmitter ilgen)
@@ -3858,16 +3735,58 @@ sealed class Compiler
 		}
 	}
 
+	private sealed class DynamicFieldBinder
+	{
+		private MethodInfo method;
+
+		internal void Emit(Compiler compiler, ClassFile.ConstantPoolItemFieldref cpi, ClassFile.RefKind kind)
+		{
+			if (method == null)
+			{
+				method = CreateMethod(compiler, cpi, kind);
+			}
+			compiler.ilGenerator.Emit(OpCodes.Call, method);
+		}
+
+		private static MethodInfo CreateMethod(Compiler compiler, ClassFile.ConstantPoolItemFieldref cpi, ClassFile.RefKind kind)
+		{
+			TypeWrapper ret;
+			TypeWrapper[] args;
+			switch (kind)
+			{
+				case ClassFile.RefKind.getField:
+					ret = cpi.GetFieldType();
+					args = new TypeWrapper[] { cpi.GetClassType() };
+					break;
+				case ClassFile.RefKind.getStatic:
+					ret = cpi.GetFieldType();
+					args = TypeWrapper.EmptyArray;
+					break;
+				case ClassFile.RefKind.putField:
+					ret = PrimitiveTypeWrapper.VOID;
+					args = new TypeWrapper[] { cpi.GetClassType(), cpi.GetFieldType() };
+					break;
+				case ClassFile.RefKind.putStatic:
+					ret = PrimitiveTypeWrapper.VOID;
+					args = new TypeWrapper[] { cpi.GetFieldType() };
+					break;
+				default:
+					throw new InvalidOperationException();
+			}
+			return DynamicBinder.Emit(compiler, kind, cpi, ret, args, false);
+		}
+	}
+
 	private sealed class DynamicBinder
 	{
 		private MethodWrapper mw;
 
-		internal MethodWrapper Get(DynamicTypeWrapper.FinishContext context, ClassFile.RefKind kind, ClassFile.ConstantPoolItemMI cpi)
+		internal MethodWrapper Get(Compiler compiler, ClassFile.RefKind kind, ClassFile.ConstantPoolItemMI cpi, bool privileged)
 		{
-			return mw ?? (mw = new DynamicBinderMethodWrapper(cpi, Emit(context, kind, cpi), kind));
+			return mw ?? (mw = new DynamicBinderMethodWrapper(cpi, Emit(compiler, kind, cpi, privileged), kind));
 		}
 
-		private static MethodInfo Emit(DynamicTypeWrapper.FinishContext context, ClassFile.RefKind kind, ClassFile.ConstantPoolItemMI cpi)
+		private static MethodInfo Emit(Compiler compiler, ClassFile.RefKind kind, ClassFile.ConstantPoolItemMI cpi, bool privileged)
 		{
 			TypeWrapper ret;
 			TypeWrapper[] args;
@@ -3884,18 +3803,26 @@ sealed class Compiler
 			else
 			{
 				ret = cpi.GetRetType();
-				args = new TypeWrapper[cpi.GetArgTypes().Length + 1];
-				Array.Copy(cpi.GetArgTypes(), 0, args, 1, args.Length - 1);
-				args[0] = cpi.GetClassType();
+				args = ArrayUtil.Concat(cpi.GetClassType(), cpi.GetArgTypes());
 			}
-			Type delegateType = MethodHandleUtil.CreateDelegateType(args, ret);
-			FieldBuilder fb = context.DefineMethodHandleInvokeCacheField(delegateType);
+			return Emit(compiler, kind, cpi, ret, args, privileged);
+		}
+
+		internal static MethodInfo Emit(Compiler compiler, ClassFile.RefKind kind, ClassFile.ConstantPoolItemFMI cpi, TypeWrapper ret, TypeWrapper[] args, bool privileged)
+		{
+			bool ghostTarget = (kind == ClassFile.RefKind.invokeSpecial || kind == ClassFile.RefKind.invokeVirtual || kind == ClassFile.RefKind.invokeInterface) && args[0].IsGhost;
+			Type delegateType = MethodHandleUtil.CreateMethodHandleDelegateType(args, ret);
+			FieldBuilder fb = compiler.context.DefineMethodHandleInvokeCacheField(delegateType);
 			Type[] types = new Type[args.Length];
 			for (int i = 0; i < types.Length; i++)
 			{
 				types[i] = args[i].TypeAsSignatureType;
 			}
-			MethodBuilder mb = context.DefineMethodHandleDispatchStub(ret.TypeAsSignatureType, types);
+			if (ghostTarget)
+			{
+				types[0] = types[0].MakeByRefType();
+			}
+			MethodBuilder mb = compiler.context.DefineMethodHandleDispatchStub(ret.TypeAsSignatureType, types);
 			CodeEmitter ilgen = CodeEmitter.Create(mb);
 			ilgen.Emit(OpCodes.Ldsfld, fb);
 			CodeEmitterLabel label = ilgen.DefineLabel();
@@ -3904,7 +3831,14 @@ sealed class Compiler
 			ilgen.Emit(OpCodes.Ldstr, cpi.Class);
 			ilgen.Emit(OpCodes.Ldstr, cpi.Name);
 			ilgen.Emit(OpCodes.Ldstr, cpi.Signature);
-			context.EmitCallerID(ilgen);
+			if (privileged)
+			{
+				compiler.context.EmitHostCallerID(ilgen);
+			}
+			else
+			{
+				compiler.context.EmitCallerID(ilgen, compiler.m.IsLambdaFormCompiled);
+			}
 			ilgen.Emit(OpCodes.Call, ByteCodeHelperMethods.DynamicBinderMemberLookup.MakeGenericMethod(delegateType));
 			ilgen.Emit(OpCodes.Volatile);
 			ilgen.Emit(OpCodes.Stsfld, fb);
@@ -3913,6 +3847,10 @@ sealed class Compiler
 			for (int i = 0; i < args.Length; i++)
 			{
 				ilgen.EmitLdarg(i);
+				if (i == 0 && ghostTarget)
+				{
+					ilgen.Emit(OpCodes.Ldobj, args[0].TypeAsSignatureType);
+				}
 			}
 			MethodHandleUtil.EmitCallDelegateInvokeMethod(ilgen, delegateType);
 			ilgen.Emit(OpCodes.Ret);
@@ -3980,41 +3918,74 @@ sealed class Compiler
 				mw = cpi.GetMethod();
 				break;
 			case NormalizedByteCode.__dynamic_invokeinterface:
-				return context.GetValue<DynamicBinder>(constantPoolIndex).Get(context, ClassFile.RefKind.invokeInterface, cpi);
 			case NormalizedByteCode.__dynamic_invokestatic:
-				return context.GetValue<DynamicBinder>(constantPoolIndex).Get(context, ClassFile.RefKind.invokeStatic, cpi);
 			case NormalizedByteCode.__dynamic_invokevirtual:
-				return context.GetValue<DynamicBinder>(constantPoolIndex).Get(context, ClassFile.RefKind.invokeVirtual, cpi);
 			case NormalizedByteCode.__dynamic_invokespecial:
-				return context.GetValue<DynamicBinder>(constantPoolIndex).Get(context, ClassFile.RefKind.newInvokeSpecial, cpi);
+			case NormalizedByteCode.__privileged_invokestatic:
+			case NormalizedByteCode.__privileged_invokevirtual:
+			case NormalizedByteCode.__privileged_invokespecial:
+				return GetDynamicMethodWrapper(constantPoolIndex, invoke, cpi);
 			case NormalizedByteCode.__methodhandle_invoke:
-				return new MethodHandleMethodWrapper(context, clazz, cpi, false);
-			case NormalizedByteCode.__methodhandle_invokeexact:
-				return new MethodHandleMethodWrapper(context, clazz, cpi, true);
+			case NormalizedByteCode.__methodhandle_link:
+				return new MethodHandleMethodWrapper(context, clazz, cpi);
 			default:
 				throw new InvalidOperationException();
 		}
 		if(mw.IsDynamicOnly)
 		{
-			switch (invoke)
-			{
-				case NormalizedByteCode.__invokespecial:
-					return context.GetValue<DynamicBinder>(constantPoolIndex).Get(context, ClassFile.RefKind.invokeSpecial, cpi);
-				case NormalizedByteCode.__invokeinterface:
-					return context.GetValue<DynamicBinder>(constantPoolIndex).Get(context, ClassFile.RefKind.invokeInterface, cpi);
-				case NormalizedByteCode.__invokestatic:
-					return context.GetValue<DynamicBinder>(constantPoolIndex).Get(context, ClassFile.RefKind.invokeStatic, cpi);
-				case NormalizedByteCode.__invokevirtual:
-					return context.GetValue<DynamicBinder>(constantPoolIndex).Get(context, ClassFile.RefKind.invokeVirtual, cpi);
-				default:
-					throw new InvalidOperationException();
-			}
+			return GetDynamicMethodWrapper(constantPoolIndex, invoke, cpi);
 		}
 		return mw;
 	}
 
-	// TODO this method should have a better name
-	private TypeWrapper SigTypeToClassName(TypeWrapper type, TypeWrapper nullType)
+	private MethodWrapper GetDynamicMethodWrapper(int index, NormalizedByteCode invoke, ClassFile.ConstantPoolItemMI cpi)
+	{
+		ClassFile.RefKind kind;
+		switch (invoke)
+		{
+			case NormalizedByteCode.__invokeinterface:
+			case NormalizedByteCode.__dynamic_invokeinterface:
+				kind = ClassFile.RefKind.invokeInterface;
+				break;
+			case NormalizedByteCode.__invokestatic:
+			case NormalizedByteCode.__dynamic_invokestatic:
+			case NormalizedByteCode.__privileged_invokestatic:
+				kind = ClassFile.RefKind.invokeStatic;
+				break;
+			case NormalizedByteCode.__invokevirtual:
+			case NormalizedByteCode.__dynamic_invokevirtual:
+			case NormalizedByteCode.__privileged_invokevirtual:
+				kind = ClassFile.RefKind.invokeVirtual;
+				break;
+			case NormalizedByteCode.__invokespecial:
+			case NormalizedByteCode.__dynamic_invokespecial:
+				kind = ClassFile.RefKind.newInvokeSpecial;
+				break;
+			case NormalizedByteCode.__privileged_invokespecial:
+				// we don't support calling a base class constructor
+				kind = cpi.GetMethod().IsConstructor
+					? ClassFile.RefKind.newInvokeSpecial
+					: ClassFile.RefKind.invokeSpecial;
+				break;
+			default:
+				throw new InvalidOperationException();
+		}
+		bool privileged;
+		switch (invoke)
+		{
+			case NormalizedByteCode.__privileged_invokestatic:
+			case NormalizedByteCode.__privileged_invokevirtual:
+			case NormalizedByteCode.__privileged_invokespecial:
+				privileged = true;
+				break;
+			default:
+				privileged = false;
+				break;
+		}
+		return context.GetValue<DynamicBinder>(index | ((byte)kind << 24)).Get(this, kind, cpi, privileged);
+	}
+
+	private TypeWrapper ComputeThisType(TypeWrapper type, MethodWrapper method, NormalizedByteCode invoke)
 	{
 		if(type == VerifierTypeWrapper.UninitializedThis
 			|| VerifierTypeWrapper.IsThis(type))
@@ -4027,7 +3998,11 @@ sealed class Compiler
 		}
 		else if(type == VerifierTypeWrapper.Null)
 		{
-			return nullType;
+			return method.DeclaringType;
+		}
+		else if(invoke == NormalizedByteCode.__invokevirtual && method.IsProtected && type.IsUnloadable)
+		{
+			return clazz;
 		}
 		else
 		{
