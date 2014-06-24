@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2002-2013 Jeroen Frijters
+  Copyright (C) 2002-2014 Jeroen Frijters
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -1160,6 +1160,7 @@ sealed class MethodAnalyzer
 	private readonly static TypeWrapper DoubleArrayType;
 	private readonly static TypeWrapper LongArrayType;
 	private readonly static TypeWrapper java_lang_ThreadDeath;
+	private readonly TypeWrapper host;	// used to by Unsafe.defineAnonymousClass() to provide access to private members of the host
 	private readonly TypeWrapper wrapper;
 	private readonly MethodWrapper mw;
 	private readonly ClassFile classFile;
@@ -1184,13 +1185,14 @@ sealed class MethodAnalyzer
 		java_lang_ThreadDeath = ClassLoaderWrapper.LoadClassCritical("java.lang.ThreadDeath");
 	}
 
-	internal MethodAnalyzer(TypeWrapper wrapper, MethodWrapper mw, ClassFile classFile, ClassFile.Method method, ClassLoaderWrapper classLoader)
+	internal MethodAnalyzer(TypeWrapper host, TypeWrapper wrapper, MethodWrapper mw, ClassFile classFile, ClassFile.Method method, ClassLoaderWrapper classLoader)
 	{
 		if(method.VerifyError != null)
 		{
 			throw new VerifyError(method.VerifyError);
 		}
 
+		this.host = host;
 		this.wrapper = wrapper;
 		this.mw = mw;
 		this.classFile = classFile;
@@ -1276,6 +1278,7 @@ sealed class MethodAnalyzer
 							case ClassFile.ConstantType.Integer:
 							case ClassFile.ConstantType.Long:
 							case ClassFile.ConstantType.String:
+							case ClassFile.ConstantType.LiveObject:
 								code[i].PatchOpCode(NormalizedByteCode.__ldc_nothrow);
 								break;
 						}
@@ -1640,6 +1643,9 @@ sealed class MethodAnalyzer
 									case ClassFile.ConstantType.String:
 										s.PushType(CoreClasses.java.lang.String.Wrapper);
 										break;
+									case ClassFile.ConstantType.LiveObject:
+										s.PushType(CoreClasses.java.lang.Object.Wrapper);
+										break;
 									case ClassFile.ConstantType.Class:
 										if(classFile.MajorVersion < 49)
 										{
@@ -1669,8 +1675,11 @@ sealed class MethodAnalyzer
 							case NormalizedByteCode.__dynamic_invokespecial:
 							case NormalizedByteCode.__dynamic_invokeinterface:
 							case NormalizedByteCode.__dynamic_invokestatic:
+							case NormalizedByteCode.__privileged_invokevirtual:
+							case NormalizedByteCode.__privileged_invokespecial:
+							case NormalizedByteCode.__privileged_invokestatic:
 							case NormalizedByteCode.__methodhandle_invoke:
-							case NormalizedByteCode.__methodhandle_invokeexact:
+							case NormalizedByteCode.__methodhandle_link:
 							{
 								ClassFile.ConstantPoolItemMI cpi = GetMethodref(instr.Arg1);
 								TypeWrapper retType = cpi.GetRetType();
@@ -2406,9 +2415,21 @@ sealed class MethodAnalyzer
 		StackState stack = new StackState(state[index]);
 		NormalizedByteCode invoke = method.Instructions[index].NormalizedOpCode;
 		ClassFile.ConstantPoolItemMI cpi = GetMethodref(method.Instructions[index].Arg1);
-		if (invoke == NormalizedByteCode.__invokestatic && classFile.MajorVersion >= 52)
+		if ((invoke == NormalizedByteCode.__invokestatic || invoke == NormalizedByteCode.__invokespecial) && classFile.MajorVersion >= 52)
 		{
-			// invokestatic may be used to invoke interface methods in Java 8
+			// invokestatic and invokespecial may be used to invoke interface methods in Java 8
+			// but invokespecial can only invoke methods in the current interface or a directly implemented interface
+			if (invoke == NormalizedByteCode.__invokespecial && cpi is ClassFile.ConstantPoolItemInterfaceMethodref)
+			{
+				if (cpi.GetClassType() == host)
+				{
+					// ok
+				}
+				else if (cpi.GetClassType() != wrapper && Array.IndexOf(wrapper.Interfaces, cpi.GetClassType()) == -1)
+				{
+					throw new VerifyError("Bad invokespecial instruction: interface method reference is in an indirect superinterface.");
+				}
+			}
 		}
 		else if ((cpi is ClassFile.ConstantPoolItemInterfaceMethodref) != (invoke == NormalizedByteCode.__invokeinterface))
 		{
@@ -2482,11 +2503,35 @@ sealed class MethodAnalyzer
 					// for invokespecial we also need to make sure we're calling ourself or a base class
 					if (invoke == NormalizedByteCode.__invokespecial)
 					{
-						if (!VerifierTypeWrapper.IsNullOrUnloadable(refType) && !refType.IsSubTypeOf(wrapper))
+						if (VerifierTypeWrapper.IsNullOrUnloadable(refType))
+						{
+							// ok
+						}
+						else if (refType.IsSubTypeOf(wrapper))
+						{
+							// ok
+						}
+						else if (host != null && refType.IsSubTypeOf(host))
+						{
+							// ok
+						}
+						else
 						{
 							throw new VerifyError("Incompatible target object for invokespecial");
 						}
-						if (!targetType.IsUnloadable && !wrapper.IsSubTypeOf(targetType))
+						if (targetType.IsUnloadable)
+						{
+							// ok
+						}
+						else if (wrapper.IsSubTypeOf(targetType))
+						{
+							// ok
+						}
+						else if (host != null && host.IsSubTypeOf(targetType))
+						{
+							// ok
+						}
+						else
 						{
 							throw new VerifyError("Invokespecial cannot call subclass methods");
 						}
@@ -2727,12 +2772,12 @@ sealed class MethodAnalyzer
 				case ClassFile.RefKind.getStatic:
 				case ClassFile.RefKind.putField:
 				case ClassFile.RefKind.putStatic:
-					err = HardError.NoSuchFieldException;
-					msg = "no such field: {0}.{1}{2}";
+					err = HardError.NoSuchFieldError;
+					msg = cpi.Name;
 					break;
 				default:
-					err = HardError.NoSuchMethodException;
-					msg = "no such method: {0}.{1}{2}";
+					err = HardError.NoSuchMethodError;
+					msg = cpi.Class + "." + cpi.Name + cpi.Signature;
 					break;
 			}
 			SetHardError(wrapper.GetClassLoader(), ref instr, err, msg, cpi.Class, cpi.Name, SigToString(cpi.Signature));
@@ -2745,7 +2790,7 @@ sealed class MethodAnalyzer
 			}
 			else
 			{
-				SetHardError(wrapper.GetClassLoader(), ref instr, HardError.IllegalAccessException, "member is private: {0}.{1}/{2}, from {3}", cpi.Class, cpi.Name, SigToString(cpi.Signature), wrapper.Name);
+				SetHardError(wrapper.GetClassLoader(), ref instr, HardError.IllegalAccessException, "member is private: {0}.{1}/{2}/{3}, from {4}", cpi.Class, cpi.Name, SigToString(cpi.Signature), cpi.Kind, wrapper.Name);
 			}
 		}
 	}
@@ -3522,9 +3567,7 @@ sealed class MethodAnalyzer
 				msg = Message.EmittedIllegalAccessError;
 				break;
 			case HardError.IncompatibleClassChangeError:
-			case HardError.NoSuchFieldException:
 			case HardError.IllegalAccessException:
-			case HardError.NoSuchMethodException:
 				msg = Message.EmittedIncompatibleClassChangeError;
 				break;
 			case HardError.NoSuchFieldError:
@@ -3553,24 +3596,29 @@ sealed class MethodAnalyzer
 		NormalizedByteCode invoke = instr.NormalizedOpCode;
 		bool isnew = false;
 		TypeWrapper thisType;
-		if(invoke == NormalizedByteCode.__invokestatic)
+		if (invoke == NormalizedByteCode.__invokevirtual
+			&& cpi.Class == "java.lang.invoke.MethodHandle"
+			&& (cpi.Name == "invoke" || cpi.Name == "invokeExact" || cpi.Name == "invokeBasic"))
+		{
+			if (cpi.GetArgTypes().Length > 127 && MethodHandleUtil.SlotCount(cpi.GetArgTypes()) > 254)
+			{
+				instr.SetHardError(HardError.LinkageError, AllocErrorMessage("bad parameter count"));
+				return;
+			}
+			instr.PatchOpCode(NormalizedByteCode.__methodhandle_invoke);
+			return;
+		}
+		else if (invoke == NormalizedByteCode.__invokestatic
+			&& cpi.Class == "java.lang.invoke.MethodHandle"
+			&& (cpi.Name == "linkToVirtual" || cpi.Name == "linkToStatic" || cpi.Name == "linkToSpecial" || cpi.Name == "linkToInterface")
+			&& CoreClasses.java.lang.invoke.MethodHandle.Wrapper.IsPackageAccessibleFrom(wrapper))
+		{
+			instr.PatchOpCode(NormalizedByteCode.__methodhandle_link);
+			return;
+		}
+		else if (invoke == NormalizedByteCode.__invokestatic)
 		{
 			thisType = null;
-		}
-		else if (invoke == NormalizedByteCode.__invokevirtual
-			&& classFile.MajorVersion >= 51
-			&& cpi.Class == "java.lang.invoke.MethodHandle"
-			&& (cpi.Name == "invoke" || cpi.Name == "invokeExact"))
-		{
-			if (cpi.Name == "invoke")
-			{
-				instr.PatchOpCode(NormalizedByteCode.__methodhandle_invoke);
-			}
-			else
-			{
-				instr.PatchOpCode(NormalizedByteCode.__methodhandle_invokeexact);
-			}
-			return;
 		}
 		else
 		{
@@ -3625,9 +3673,12 @@ sealed class MethodAnalyzer
 		{
 			SetHardError(wrapper.GetClassLoader(), ref instr, HardError.IncompatibleClassChangeError, "invokeinterface on non-interface");
 		}
-		else if(cpi.GetClassType().IsInterface && invoke != NormalizedByteCode.__invokeinterface && (invoke != NormalizedByteCode.__invokestatic || classFile.MajorVersion < 52))
+		else if(cpi.GetClassType().IsInterface && invoke != NormalizedByteCode.__invokeinterface && ((invoke != NormalizedByteCode.__invokestatic && invoke != NormalizedByteCode.__invokespecial) || classFile.MajorVersion < 52))
 		{
-			SetHardError(wrapper.GetClassLoader(), ref instr, HardError.IncompatibleClassChangeError, "interface method must be invoked used invokeinterface or invokestatic");
+			SetHardError(wrapper.GetClassLoader(), ref instr, HardError.IncompatibleClassChangeError,
+				classFile.MajorVersion < 52
+					? "interface method must be invoked using invokeinterface"
+					: "interface method must be invoked using invokeinterface, invokespecial or invokestatic");
 		}
 		else
 		{
@@ -3649,6 +3700,24 @@ sealed class MethodAnalyzer
 					{
 						return;
 					}
+					else if(host != null && targetMethod.IsAccessibleFrom(cpi.GetClassType(), host, thisType))
+					{
+						switch (invoke)
+						{
+							case NormalizedByteCode.__invokespecial:
+								instr.PatchOpCode(NormalizedByteCode.__privileged_invokespecial);
+								break;
+							case NormalizedByteCode.__invokestatic:
+								instr.PatchOpCode(NormalizedByteCode.__privileged_invokestatic);
+								break;
+							case NormalizedByteCode.__invokevirtual:
+								instr.PatchOpCode(NormalizedByteCode.__privileged_invokevirtual);
+								break;
+							default:
+								throw new InvalidOperationException();
+						}
+						return;
+					}
 					else
 					{
 						// NOTE special case for incorrect invocation of Object.clone(), because this could mean
@@ -3662,7 +3731,7 @@ sealed class MethodAnalyzer
 							instr.PatchOpCode(NormalizedByteCode.__clone_array);
 							return;
 						}
-						SetHardError(wrapper.GetClassLoader(), ref instr, HardError.IllegalAccessError, "Try to access method {0}.{1}{2} from class {3}", targetMethod.DeclaringType.Name, cpi.Name, cpi.Signature, wrapper.Name);
+						SetHardError(wrapper.GetClassLoader(), ref instr, HardError.IllegalAccessError, "tried to access method {0}.{1}{2} from class {3}", ToSlash(targetMethod.DeclaringType.Name), cpi.Name, ToSlash(cpi.Signature), ToSlash(wrapper.Name));
 					}
 				}
 				else
@@ -3675,6 +3744,11 @@ sealed class MethodAnalyzer
 				SetHardError(wrapper.GetClassLoader(), ref instr, HardError.NoSuchMethodError, "{0}.{1}{2}", cpi.Class, cpi.Name, cpi.Signature);
 			}
 		}
+	}
+
+	private static string ToSlash(string str)
+	{
+		return str.Replace('.', '/');
 	}
 
 	private void PatchFieldAccess(TypeWrapper wrapper, MethodWrapper mw, ref ClassFile.Method.Instruction instr, StackState stack)
