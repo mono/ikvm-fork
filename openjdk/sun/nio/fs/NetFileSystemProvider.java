@@ -338,7 +338,7 @@ final class NetFileSystemProvider extends AbstractFileSystemProvider
             }
         }
 
-        return FileChannelImpl.open(open(npath.path, mode, rights, share, options), npath.path, read, write, append, null);
+        return FileChannelImpl.open(open(npath.path, mode, rights, share, options), read, write, append, null);
     }
 
     private static FileDescriptor open(String path, int mode, int rights, int share, int options) throws IOException
@@ -1104,7 +1104,7 @@ final class NetFileSystemProvider extends AbstractFileSystemProvider
 
             public long size()
             {
-                return info.get_Length();
+                return info.get_Exists() ? info.get_Length() : 0;
             }
 
             public boolean isArchive()
