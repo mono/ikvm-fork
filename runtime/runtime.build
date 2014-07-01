@@ -1,4 +1,27 @@
 <?xml version="1.0"?>
+<!--
+  Copyright (C) 2002-2013 Jeroen Frijters
+
+  This software is provided 'as-is', without any express or implied
+  warranty.  In no event will the authors be held liable for any damages
+  arising from the use of this software.
+
+  Permission is granted to anyone to use this software for any purpose,
+  including commercial applications, and to alter it and redistribute it
+  freely, subject to the following restrictions:
+
+  1. The origin of this software must not be misrepresented; you must not
+     claim that you wrote the original software. If you use this software
+     in a product, an acknowledgment in the product documentation would be
+     appreciated but is not required.
+  2. Altered source versions must be plainly marked as such, and must not be
+     misrepresented as being the original software.
+  3. This notice may not be removed or altered from any source distribution.
+
+  Jeroen Frijters
+  jeroen@frijters.net
+  
+-->
 <project name="IKVM.Runtime" default="full">
     <include buildfile="../ikvm.include" />
 
@@ -20,7 +43,11 @@
     <target name="signed">
         <property name="signed" value="SIGNCODE" />
         <property name="signoption" value="-key:ikvm-key" />
-        <property name="ilasm_signoption" value="/key:@ikvm-key" />
+        <call target="full" />
+    </target>
+
+    <target name="no-ref-emit">
+        <property name="no-ref-emit" value="true" />
         <call target="full" />
     </target>
 
@@ -60,7 +87,7 @@
     </target>
 
     <target name="defs">
-        <property name="defs" value="TRACE" />
+        <property name="defs" value="TRACE;EMITTERS" />
         <if test="${property::exists('signed')}">
             <property name="defs" value="${defs};${signed}" />
         </if>
@@ -69,6 +96,9 @@
         </if>
         <if test="${first-pass}">
             <property name="defs" value="${defs};FIRST_PASS" />
+        </if>
+        <if test="${property::exists('no-ref-emit')}">
+            <property name="defs" value="${defs};NO_REF_EMIT" />
         </if>
     </target>
 
@@ -107,9 +137,11 @@
                 <include name="../CommonAssemblyInfo.cs" />
                 <include name="AssemblyInfo.cs" />
                 <include name="AssemblyClassLoader.cs" />
+                <include name="Assertions.cs" />
                 <include name="atomic.cs" />
                 <include name="attributes.cs" />
                 <include name="BigEndianBinaryReader.cs" />
+                <include name="Boxer.cs" />
                 <include name="ByteCode.cs" />
                 <include name="ByteCodeHelper.cs" />
                 <include name="ClassFile.cs" />
@@ -120,6 +152,7 @@
                 <include name="CoreClasses.cs" />
                 <include name="DotNetTypeWrapper.cs" />
                 <include name="DynamicClassLoader.cs" />
+                <include name="DynamicMethodUtils.cs" />
                 <include name="DynamicTypeWrapper.cs" />
                 <include name="ExceptionHelper.cs" />
                 <include name="intrinsics.cs" />
@@ -127,7 +160,7 @@
                 <include name="JsrInliner.cs" />
                 <include name="LocalVars.cs" />
                 <include name="MemberWrapper.cs" />
-                <include name="openjdk.cs" />
+                <include name="MethodHandleUtil.cs" />
                 <include name="PassiveWeakDictionary.cs" />
                 <include name="profiler.cs" />
                 <include name="ReflectUtil.cs" />
@@ -151,10 +184,22 @@
                 <include name="fdlibm/s_log1p.cs" />
                 <include name="fdlibm/s_scalbn.cs" />
                 <include name="fdlibm/s_tan.cs" />
+                <include name="openjdk/java.io.cs" />
+                <include name="openjdk/java.lang.cs" />
                 <include name="openjdk/java.lang.invoke.cs" />
+                <include name="openjdk/java.lang.reflect.cs" />
+                <include name="openjdk/java.net.cs" />
+                <include name="openjdk/java.nio.cs" />
+                <include name="openjdk/java.security.cs" />
+                <include name="openjdk/java.util.cs" />
+                <include name="openjdk/java.util.prefs.cs" />
+                <include name="openjdk/misc.cs" />
                 <include name="openjdk/sun.management.cs" />
+                <include name="openjdk/sun.misc.cs" />
                 <include name="openjdk/sun.nio.ch.cs" />
+                <include name="openjdk/sun.reflect.cs" />
                 <include name="openjdk/sun.security.krb5.cs" />
+                <include name="openjdk/sun.util.locale.provider.cs" />
                 <include name="stubgen/ClassFileWriter.cs" />
                 <include name="stubgen/SerialVersionUID.cs" />
                 <include name="stubgen/StubGenerator.cs" />
