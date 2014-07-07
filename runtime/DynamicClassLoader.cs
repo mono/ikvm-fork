@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2002-2013 Jeroen Frijters
+  Copyright (C) 2002-2014 Jeroen Frijters
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -62,6 +62,7 @@ namespace IKVM.Internal
 #endif // STATIC_COMPILER
 		private Dictionary<string, TypeBuilder> unloadables;
 		private TypeBuilder unloadableContainer;
+		private Type[] delegates;
 #if !STATIC_COMPILER && !CLASSGC
 		private static DynamicClassLoader instance = new DynamicClassLoader(CreateModuleBuilder(), false);
 #endif
@@ -222,21 +223,29 @@ namespace IKVM.Internal
 			return mangledTypeName;
 		}
 
-		internal sealed override TypeWrapper DefineClassImpl(Dictionary<string, TypeWrapper> types, ClassFile f, ClassLoaderWrapper classLoader, ProtectionDomain protectionDomain)
+		internal sealed override TypeWrapper DefineClassImpl(Dictionary<string, TypeWrapper> types, TypeWrapper host, ClassFile f, ClassLoaderWrapper classLoader, ProtectionDomain protectionDomain)
 		{
 #if STATIC_COMPILER
 			AotTypeWrapper type = new AotTypeWrapper(f, (CompilerClassLoader)classLoader);
 			type.CreateStep1();
 			types[f.Name] = type;
 			return type;
+#elif FIRST_PASS
+			return null;
 #else
 			// this step can throw a retargettable exception, if the class is incorrect
-			DynamicTypeWrapper type = new DynamicTypeWrapper(f, classLoader, protectionDomain);
+			DynamicTypeWrapper type = new DynamicTypeWrapper(host, f, classLoader, protectionDomain);
 			// This step actually creates the TypeBuilder. It is not allowed to throw any exceptions,
 			// if an exception does occur, it is due to a programming error in the IKVM or CLR runtime
 			// and will cause a CriticalFailure and exit the process.
 			type.CreateStep1();
 			type.CreateStep2();
+			if(types == null)
+			{
+				// we're defining an anonymous class, so we don't need any locking
+				TieClassAndWrapper(type, protectionDomain);
+				return type;
+			}
 			lock(types)
 			{
 				// in very extreme conditions another thread may have beaten us to it
@@ -248,16 +257,7 @@ namespace IKVM.Internal
 				if(race == null)
 				{
 					types[f.Name] = type;
-#if !FIRST_PASS
-					java.lang.Class clazz = new java.lang.Class(null);
-#if __MonoCS__
-					TypeWrapper.SetTypeWrapperHack(clazz, type);
-#else
-					clazz.typeWrapper = type;
-#endif
-					clazz.pd = protectionDomain;
-					type.SetClassObject(clazz);
-#endif
+					TieClassAndWrapper(type, protectionDomain);
 				}
 				else
 				{
@@ -268,41 +268,36 @@ namespace IKVM.Internal
 #endif // STATIC_COMPILER
 		}
 
+#if !STATIC_COMPILER && !FIRST_PASS
+		private static java.lang.Class TieClassAndWrapper(TypeWrapper type, ProtectionDomain protectionDomain)
+		{
+			java.lang.Class clazz = new java.lang.Class(null);
+#if __MonoCS__
+			TypeWrapper.SetTypeWrapperHack(clazz, type);
+#else
+			clazz.typeWrapper = type;
+#endif
+			clazz.pd = protectionDomain;
+			type.SetClassObject(clazz);
+			return clazz;
+		}
+#endif
+
 #if STATIC_COMPILER
-		internal TypeBuilder DefineProxy(TypeWrapper proxyClass, TypeWrapper[] interfaces)
+		internal TypeBuilder DefineProxy(string name, TypeAttributes typeAttributes, Type parent, Type[] interfaces)
 		{
 			if (proxiesContainer == null)
 			{
-				proxiesContainer = moduleBuilder.DefineType("__<Proxies>", TypeAttributes.Public | TypeAttributes.Class | TypeAttributes.Sealed | TypeAttributes.Abstract);
+				proxiesContainer = moduleBuilder.DefineType(TypeNameUtil.ProxiesContainer, TypeAttributes.Public | TypeAttributes.Class | TypeAttributes.Sealed | TypeAttributes.Abstract);
 				AttributeHelper.HideFromJava(proxiesContainer);
 				AttributeHelper.SetEditorBrowsableNever(proxiesContainer);
 				proxies = new List<TypeBuilder>();
 			}
-			Type[] ifaces = new Type[interfaces.Length];
-			for (int i = 0; i < ifaces.Length; i++)
-			{
-				ifaces[i] = interfaces[i].TypeAsBaseType;
-			}
-			TypeBuilder tb = proxiesContainer.DefineNestedType(GetProxyNestedName(interfaces), TypeAttributes.NestedPublic | TypeAttributes.Class | TypeAttributes.Sealed, proxyClass.TypeAsBaseType, ifaces);
+			TypeBuilder tb = proxiesContainer.DefineNestedType(name, typeAttributes, parent, interfaces);
 			proxies.Add(tb);
 			return tb;
 		}
 #endif
-
-		private static string GetProxyNestedName(TypeWrapper[] interfaces)
-		{
-			System.Text.StringBuilder sb = new System.Text.StringBuilder();
-			foreach (TypeWrapper tw in interfaces)
-			{
-				sb.Append(tw.Name.Length).Append('|').Append(tw.Name);
-			}
-			return TypeNameUtil.MangleNestedTypeName(sb.ToString());
-		}
-
-		internal static string GetProxyName(TypeWrapper[] interfaces)
-		{
-			return "__<Proxies>+" + GetProxyNestedName(interfaces);
-		}
 
 		internal override Type DefineUnloadable(string name)
 		{
@@ -324,6 +319,47 @@ namespace IKVM.Internal
 				}
 				type = unloadableContainer.DefineNestedType(TypeNameUtil.MangleNestedTypeName(name), TypeAttributes.NestedPrivate | TypeAttributes.Interface | TypeAttributes.Abstract);
 				unloadables.Add(name, type);
+				return type;
+			}
+		}
+
+		internal override Type DefineDelegate(int parameterCount, bool returnVoid)
+		{
+			lock (this)
+			{
+				if (delegates == null)
+				{
+					delegates = new Type[512];
+				}
+				int index = parameterCount + (returnVoid ? 256 : 0);
+				Type type = delegates[index];
+				if (type != null)
+				{
+					return type;
+				}
+				TypeBuilder tb = moduleBuilder.DefineType(returnVoid ? "__<>NVIV`" + parameterCount : "__<>NVI`" + (parameterCount + 1), TypeAttributes.NotPublic | TypeAttributes.Sealed, Types.MulticastDelegate);
+				string[] names = new string[parameterCount + (returnVoid ? 0 : 1)];
+				for (int i = 0; i < names.Length; i++)
+				{
+					names[i] = "P" + i;
+				}
+				if (!returnVoid)
+				{
+					names[names.Length - 1] = "R";
+				}
+				Type[] genericParameters = tb.DefineGenericParameters(names);
+				Type[] parameterTypes = genericParameters;
+				if (!returnVoid)
+				{
+					parameterTypes = new Type[genericParameters.Length - 1];
+					Array.Copy(genericParameters, parameterTypes, parameterTypes.Length);
+				}
+				tb.DefineMethod(ConstructorInfo.ConstructorName, MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName, Types.Void, new Type[] { Types.Object, Types.IntPtr })
+					.SetImplementationFlags(MethodImplAttributes.Runtime);
+				MethodBuilder mb = tb.DefineMethod("Invoke", MethodAttributes.Public | MethodAttributes.NewSlot | MethodAttributes.Virtual, returnVoid ? Types.Void : genericParameters[genericParameters.Length - 1], parameterTypes);
+				mb.SetImplementationFlags(MethodImplAttributes.Runtime);
+				type = tb.CreateType();
+				delegates[index] = type;
 				return type;
 			}
 		}
@@ -403,7 +439,7 @@ namespace IKVM.Internal
 		{
 			AssemblyName name = new AssemblyName();
 			name.Name = "jniproxy";
-			jniProxyAssemblyBuilder = AppDomain.CurrentDomain.DefineDynamicAssembly(name, AssemblyBuilderAccess.RunAndSave, null, null, null, null, null, true);
+			jniProxyAssemblyBuilder = DefineDynamicAssembly(name, AssemblyBuilderAccess.RunAndSave, null);
 			return jniProxyAssemblyBuilder.DefineDynamicModule("jniproxy.dll", "jniproxy.dll");
 		}
 #endif
@@ -544,12 +580,7 @@ namespace IKVM.Internal
 				attribs.Add(new CustomAttributeBuilder(typeof(System.Security.SecurityTransparentAttribute).GetConstructor(Type.EmptyTypes), new object[0]));
 			}
 #endif
-			AssemblyBuilder assemblyBuilder =
-#if NET_4_0
-				AppDomain.CurrentDomain.DefineDynamicAssembly(name, access, null, true, attribs);
-#else
-				AppDomain.CurrentDomain.DefineDynamicAssembly(name, access, null, null, null, null, null, true, attribs);
-#endif
+			AssemblyBuilder assemblyBuilder = DefineDynamicAssembly(name, access, attribs);
 			AttributeHelper.SetRuntimeCompatibilityAttribute(assemblyBuilder);
 			bool debug = JVM.EmitSymbols;
 			CustomAttributeBuilder debugAttr = new CustomAttributeBuilder(typeof(DebuggableAttribute).GetConstructor(new Type[] { typeof(bool), typeof(bool) }), new object[] { true, debug });
@@ -557,6 +588,15 @@ namespace IKVM.Internal
 			ModuleBuilder moduleBuilder = JVM.IsSaveDebugImage ? assemblyBuilder.DefineDynamicModule(name.Name, name.Name + ".dll", debug) : assemblyBuilder.DefineDynamicModule(name.Name, debug);
 			moduleBuilder.SetCustomAttribute(new CustomAttributeBuilder(typeof(IKVM.Attributes.JavaModuleAttribute).GetConstructor(Type.EmptyTypes), new object[0]));
 			return moduleBuilder;
+		}
+
+		private static AssemblyBuilder DefineDynamicAssembly(AssemblyName name, AssemblyBuilderAccess access, IEnumerable<CustomAttributeBuilder> assemblyAttributes)
+		{
+#if NET_4_0
+			return AppDomain.CurrentDomain.DefineDynamicAssembly(name, access, null, true, assemblyAttributes);
+#else
+			return AppDomain.CurrentDomain.DefineDynamicAssembly(name, access, null, null, null, null, null, true, assemblyAttributes);
+#endif
 		}
 #endif // !STATIC_COMPILER
 	}
