@@ -2662,8 +2662,6 @@ namespace IKVM.Reflection
 
 		internal static Type Make(Type type, Type[] typeArguments, CustomModifiers[] mods)
 		{
-			if (type.Universe.SupressReferenceTypeIdentityConversion)
-				return type.Universe.CanonicalizeType(new GenericTypeInstance(type, typeArguments, mods));
 			bool identity = true;
 			if (type is TypeBuilder || type is BakedType || type.__IsMissing)
 			{
