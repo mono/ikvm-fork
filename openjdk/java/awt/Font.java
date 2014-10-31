@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1995, 2011, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1995, 2013, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -35,23 +35,30 @@ import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.peer.FontPeer;
 import java.io.*;
+import java.lang.ref.ReferenceQueue;
 import java.lang.ref.SoftReference;
+import java.lang.ref.WeakReference;
 import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.security.AccessController;
+import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
 import java.text.AttributedCharacterIterator.Attribute;
 import java.text.CharacterIterator;
 import java.text.StringCharacterIterator;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import sun.font.StandardGlyphVector;
 
 import cli.System.IntPtr;
+import cli.System.Drawing.FontFamily;
 import cli.System.Drawing.GraphicsUnit;
 import cli.System.Drawing.Text.PrivateFontCollection;
-import cli.System.Runtime.InteropServices.GCHandle;
-import cli.System.Runtime.InteropServices.GCHandleType;
+import cli.System.Runtime.InteropServices.DllImportAttribute;
 
 import sun.font.AttributeMap;
 import sun.font.AttributeValues;
@@ -78,17 +85,17 @@ import static sun.font.EAttribute.*;
  * and to render sequences of glyphs on <code>Graphics</code> and
  * <code>Component</code> objects.
  *
- * <h4>Characters and Glyphs</h4>
+ * <h3>Characters and Glyphs</h3>
  *
  * A <em>character</em> is a symbol that represents an item such as a letter,
  * a digit, or punctuation in an abstract way. For example, <code>'g'</code>,
- * <font size=-1>LATIN SMALL LETTER G</font>, is a character.
+ * LATIN SMALL LETTER G, is a character.
  * <p>
  * A <em>glyph</em> is a shape used to render a character or a sequence of
  * characters. In simple writing systems, such as Latin, typically one glyph
  * represents one character. In general, however, characters and glyphs do not
  * have one-to-one correspondence. For example, the character '&aacute;'
- * <font size=-1>LATIN SMALL LETTER A WITH ACUTE</font>, can be represented by
+ * LATIN SMALL LETTER A WITH ACUTE, can be represented by
  * two glyphs: one for 'a' and one for '&acute;'. On the other hand, the
  * two-character string "fi" can be represented by a single glyph, an
  * "fi" ligature. In complex writing systems, such as Arabic or the South
@@ -100,7 +107,7 @@ import static sun.font.EAttribute.*;
  * of characters as well as the tables needed to map sequences of characters to
  * corresponding sequences of glyphs.
  *
- * <h4>Physical and Logical Fonts</h4>
+ * <h3>Physical and Logical Fonts</h3>
  *
  * The Java Platform distinguishes between two kinds of fonts:
  * <em>physical</em> fonts and <em>logical</em> fonts.
@@ -134,10 +141,10 @@ import static sun.font.EAttribute.*;
  * <p>
  * For a discussion of the relative advantages and disadvantages of using
  * physical or logical fonts, see the
- * <a href="http://java.sun.com/j2se/corejava/intl/reference/faqs/index.html#desktop-rendering">Internationalization FAQ</a>
+ * <a href="http://www.oracle.com/technetwork/java/javase/tech/faq-jsp-138165.html">Internationalization FAQ</a>
  * document.
  *
- * <h4>Font Faces and Names</h4>
+ * <h3>Font Faces and Names</h3>
  *
  * A <code>Font</code>
  * can have many faces, such as heavy, medium, oblique, gothic and
@@ -167,7 +174,7 @@ import static sun.font.EAttribute.*;
  * with varying sizes, styles, transforms and font features via the
  * <code>deriveFont</code> methods in this class.
  *
- * <h4>Font and TextAttribute</h4>
+ * <h3>Font and TextAttribute</h3>
  *
  * <p><code>Font</code> supports most
  * <code>TextAttribute</code>s.  This makes some operations, such as
@@ -199,12 +206,12 @@ import static sun.font.EAttribute.*;
  * not serializable.  See {@link java.awt.im.InputMethodHighlight}.</li>
  * </ul>
  *
- * Clients who create custom subclasses of <code>Paint</code> and
+ * <p>Clients who create custom subclasses of <code>Paint</code> and
  * <code>GraphicAttribute</code> can make them serializable and
  * avoid this problem.  Clients who use input method highlights can
  * convert these to the platform-specific attributes for that
  * highlight on the current platform and set them on the Font as
- * a workaround.</p>
+ * a workaround.
  *
  * <p>The <code>Map</code>-based constructor and
  * <code>deriveFont</code> APIs ignore the FONT attribute, and it is
@@ -259,7 +266,7 @@ public class Font implements java.io.Serializable
      * @serial
      * @see #getAttributes()
      */
-    private Hashtable fRequestedAttributes;
+    private Hashtable<Object, Object> fRequestedAttributes;
 
     /*
      * Constants to be used for logical font family names.
@@ -451,6 +458,7 @@ public class Font implements java.io.Serializable
     //       We implement this functionality in a package-private method
     //       to insure that it cannot be overridden by client subclasses.
     //       DO NOT INVOKE CLIENT CODE ON THIS THREAD!
+    @SuppressWarnings("deprecation")
     final FontPeer getPeer_NoClientCode() {
         if(peer == null) {
             Toolkit tk = Toolkit.getDefaultToolkit();
@@ -812,6 +820,49 @@ public class Font implements java.io.Serializable
         return new Font(attributes);
     }
 
+    private static class FontFamilyReference extends WeakReference<FontFamily> {
+        
+        private static final ReferenceQueue<FontFamily> fontFamilyQueue = new ReferenceQueue<>();
+        private static final Set<FontFamilyReference> refs = Collections.synchronizedSet( new HashSet<FontFamilyReference>() );
+        static {
+            sun.misc.SharedSecrets.getJavaLangAccess().registerShutdownHook( 5, // Shutdown hook invocation order 
+            true, // register even if shutdown in progress 
+            new Runnable() {
+                public void run() {
+                    for( FontFamilyReference ref : refs ) {
+                        ref.delete( false );
+                    }
+                }
+            } );
+        }
+        private File fontFile;
+
+        private FontFamilyReference( FontFamily family, File fontFile ) {
+            super( family, fontFamilyQueue );
+            this.fontFile = fontFile;
+            refs.add( this );
+            
+            do {
+                FontFamilyReference ref = (FontFamilyReference)fontFamilyQueue.poll();
+                if( ref == null ) {
+                    break;
+                }
+                ref.delete( true );
+            } while(true);
+        }
+        
+        private void delete( boolean isQueue ) {
+            FontFamily family = get();
+            if( family != null ) {
+                family.Dispose();
+            }
+            
+            if( fontFile.delete() && isQueue) {
+                refs.remove( this );
+            }
+        }
+    }
+
     /**
      * Returns a new <code>Font</code> using the specified font type
      * and input data.  The new <code>Font</code> is
@@ -848,43 +899,51 @@ public class Font implements java.io.Serializable
             throw new IllegalArgumentException ("font format not recognized");
         }
 
-        // read the stream in a byte array
-        ByteArrayOutputStream baos = new ByteArrayOutputStream( fontStream.available() );
-        byte[] buffer = new byte[1024];
-        int count;
-        while( (count = fontStream.read( buffer, 0, buffer.length )) != -1 ) {
-            baos.write( buffer, 0, count );
+        File fontFile;
+        try {
+            fontFile = AccessController.doPrivileged(
+                            new PrivilegedExceptionAction<File>() {
+                                public File run() throws IOException {
+                                    return Files.createTempFile("+~JF", ".tmp").toFile();
+                                }
+                            }
+                        );
+        } catch( PrivilegedActionException ex ) {
+            throw (IOException)ex.getException();
         }
-        byte[] fontData = baos.toByteArray();
+        Files.copy( fontStream, fontFile.toPath(), StandardCopyOption.REPLACE_EXISTING );
 
         // create a private Font Collection and add the font data
-        PrivateFontCollection pfc;
+        PrivateFontCollection pfc = new PrivateFontCollection();
         try {
-            pfc = createPrivateFontCollection(fontData);
+            String fileName = fontFile.getPath();
+            pfc.AddFontFile( fileName );
+            RemoveFontResourceEx( fileName ); // hack for bug http://stackoverflow.com/questions/26671026/how-to-delete-the-file-of-a-privatefontcollection-addfontfile
+            if (false) throw new cli.System.IO.FileNotFoundException();
         } catch( cli.System.IO.FileNotFoundException x ) {
             FontFormatException ffe = new FontFormatException(x.getMessage());
             ffe.initCause(x);
+            fontFile.delete();
             throw ffe;
         }
+        
+        FontFamily family = pfc.get_Families()[0]; 
+        new FontFamilyReference( family, fontFile );
 
         // create the font object
-        Font2D font2D = SunFontManager.createFont2D( pfc.get_Families()[0], 0 );
+        Font2D font2D = SunFontManager.createFont2D( family, 0 );
         Font2DHandle font2DHandle = font2D.handle;
         Font font = new Font( font2D.getFontName( Locale.getDefault() ), PLAIN, 1, true, font2DHandle );
         return font;
     }
 
-    // create a private Font Collection and add the font data
+    @DllImportAttribute.Annotation(value="gdi32")
+    private static native int RemoveFontResourceEx(String filename, int fl, IntPtr pdv);    
+
     @cli.System.Security.SecuritySafeCriticalAttribute.Annotation
-    private static PrivateFontCollection createPrivateFontCollection(byte[] fontData) throws cli.System.IO.FileNotFoundException {
-        GCHandle handle = GCHandle.Alloc(fontData, GCHandleType.wrap(GCHandleType.Pinned));
-        try {
-            PrivateFontCollection pfc = new PrivateFontCollection();
-            // AddMemoryFont throws a cli.System.IO.FileNotFoundException if the data are corrupt
-            pfc.AddMemoryFont( handle.AddrOfPinnedObject(), fontData.length );
-            return pfc;
-        } finally {
-            handle.Free();
+    private static void RemoveFontResourceEx(String filename) {
+        if( ikvm.internal.Util.WINDOWS ) {
+            RemoveFontResourceEx( filename, 16, IntPtr.Zero );
         }
     }
 
@@ -943,7 +1002,9 @@ public class Font implements java.io.Serializable
         // create a private Font Collection and add the font data
         PrivateFontCollection pfc = new PrivateFontCollection();
         try {
-            pfc.AddFontFile( fontFile.getPath() );
+            String fileName = fontFile.getPath();
+            pfc.AddFontFile( fileName );
+            RemoveFontResourceEx( fileName );// hack for bug http://stackoverflow.com/questions/26671026/how-to-delete-the-file-of-a-privatefontcollection-addfontfile
             if (false) throw new cli.System.IO.FileNotFoundException();
         } catch( cli.System.IO.FileNotFoundException fnfe ) {
             FileNotFoundException ex = new FileNotFoundException(fnfe.getMessage());
@@ -1235,7 +1296,7 @@ public class Font implements java.io.Serializable
      * Indicates whether or not this <code>Font</code> object's style is
      * PLAIN.
      * @return    <code>true</code> if this <code>Font</code> has a
-     *            PLAIN sytle;
+     *            PLAIN style;
      *            <code>false</code> otherwise.
      * @see       java.awt.Font#getStyle
      * @since     JDK1.0
@@ -1320,7 +1381,7 @@ public class Font implements java.io.Serializable
      * To ensure that this method returns the desired Font,
      * format the <code>str</code> parameter in
      * one of these ways
-     * <p>
+     *
      * <ul>
      * <li><em>fontname-style-pointsize</em>
      * <li><em>fontname-pointsize</em>
@@ -2061,11 +2122,11 @@ public class Font implements java.io.Serializable
         return false;   // REMIND always safe, but prevents caller optimize
     }
 
-    private transient SoftReference flmref;
+    private transient SoftReference<FontLineMetrics> flmref;
     private FontLineMetrics defaultLineMetrics(FontRenderContext frc) {
         FontLineMetrics flm = null;
         if (flmref == null
-            || (flm = (FontLineMetrics)flmref.get()) == null
+            || (flm = flmref.get()) == null
             || !flm.frc.equals(frc)) {
 
             /* The device transform in the frc is not used in obtaining line
@@ -2129,7 +2190,7 @@ public class Font implements java.io.Serializable
                                              ssOffset, italicAngle);
 
             flm = new FontLineMetrics(0, cm, frc);
-            flmref = new SoftReference(flm);
+            flmref = new SoftReference<FontLineMetrics>(flm);
         }
 
         return (FontLineMetrics)flm.clone();
