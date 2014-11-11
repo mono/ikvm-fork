@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2002-2013 Jeroen Frijters
+  Copyright (C) 2002-2014 Jeroen Frijters
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -59,7 +59,7 @@ namespace IKVM.Internal
 	{
 		private HandleWrapper handle;
 		private readonly TypeWrapper declaringType;
-		private readonly Modifiers modifiers;
+		protected readonly Modifiers modifiers;
 		private MemberFlags flags;
 		private readonly string name;
 		private readonly string sig;
@@ -356,7 +356,7 @@ namespace IKVM.Internal
 	abstract class MethodWrapper : MemberWrapper
 	{
 #if !STATIC_COMPILER && !FIRST_PASS && !STUB_GENERATOR
-		private volatile object reflectionMethod;
+		private volatile java.lang.reflect.Executable reflectionMethod;
 #endif
 		internal static readonly MethodWrapper[] EmptyArray  = new MethodWrapper[0];
 		private MethodBase method;
@@ -451,12 +451,12 @@ namespace IKVM.Internal
 		}
 
 #if !STATIC_COMPILER && !STUB_GENERATOR
-		internal object ToMethodOrConstructor(bool copy)
+		internal java.lang.reflect.Executable ToMethodOrConstructor(bool copy)
 		{
 #if FIRST_PASS
 			return null;
 #else
-			object method = reflectionMethod;
+			java.lang.reflect.Executable method = reflectionMethod;
 			if (method == null)
 			{
 				Link();
@@ -563,30 +563,13 @@ namespace IKVM.Internal
 		}
 #endif // !FIRST_PASS
 
-		internal static MethodWrapper FromMethod(java.lang.reflect.Method method)
+		internal static MethodWrapper FromExecutable(java.lang.reflect.Executable executable)
 		{
 #if FIRST_PASS
 			return null;
 #else
-			return TypeWrapper.FromClass(method.getDeclaringClass()).GetMethods()[method._slot()];
+			return TypeWrapper.FromClass(executable.getDeclaringClass()).GetMethods()[executable._slot()];
 #endif
-		}
-
-		internal static MethodWrapper FromConstructor(java.lang.reflect.Constructor constructor)
-		{
-#if FIRST_PASS
-			return null;
-#else
-			return TypeWrapper.FromClass(constructor.getDeclaringClass()).GetMethods()[constructor._slot()];
-#endif
-		}
-		
-		internal static MethodWrapper FromMethodOrConstructor(object methodOrConstructor)
-		{
-			java.lang.reflect.Method method = methodOrConstructor as java.lang.reflect.Method;
-			return method != null
-				? FromMethod(method)
-				: FromConstructor((java.lang.reflect.Constructor)methodOrConstructor);
 		}
 #endif // !STATIC_COMPILER && !STUB_GENERATOR
 
@@ -778,7 +761,7 @@ namespace IKVM.Internal
 				}
 				return type.MakeGenericType(types);
 			}
-			return MethodHandleUtil.CreateDelegateType(paramTypes, ReturnType);
+			return MethodHandleUtil.CreateMemberWrapperDelegateType(paramTypes, ReturnType);
 		}
 
 		internal void ResolveMethod()
@@ -863,6 +846,15 @@ namespace IKVM.Internal
 		internal bool IsConstructor
 		{
 			get { return (object)Name == (object)StringConstants.INIT; }
+		}
+
+		internal bool IsVirtual
+		{
+			get
+			{
+				return (modifiers & (Modifiers.Static | Modifiers.Private)) == 0
+					&& !IsConstructor;
+			}
 		}
 	}
 
@@ -1045,6 +1037,11 @@ namespace IKVM.Internal
 
 		internal static MirandaMethodWrapper Create(TypeWrapper declaringType, MethodWrapper ifmethod)
 		{
+			DefaultMirandaMethodWrapper dmmw = ifmethod as DefaultMirandaMethodWrapper;
+			if (dmmw != null)
+			{
+				return new DefaultMirandaMethodWrapper(declaringType, dmmw.BaseMethod);
+			}
 			return ifmethod.IsAbstract
 				? (MirandaMethodWrapper)new AbstractMirandaMethodWrapper(declaringType, ifmethod)
 				: (MirandaMethodWrapper)new DefaultMirandaMethodWrapper(declaringType, ifmethod);
@@ -1055,6 +1052,11 @@ namespace IKVM.Internal
 			if (ifmethod == mw)
 			{
 				// an interface can be implemented multiple times
+				return this;
+			}
+			else if (ifmethod.DeclaringType.ImplementsInterface(mw.DeclaringType))
+			{
+				// we can override a base interface without problems
 				return this;
 			}
 			else if (mw.DeclaringType.ImplementsInterface(ifmethod.DeclaringType))
@@ -1108,6 +1110,7 @@ namespace IKVM.Internal
 	sealed class GhostMethodWrapper : SmartMethodWrapper
 	{
 		private MethodInfo ghostMethod;
+		private MethodInfo defaultImpl;
 
 		internal GhostMethodWrapper(TypeWrapper declaringType, string name, string sig, MethodBase method, MethodInfo ghostMethod, TypeWrapper returnType, TypeWrapper[] parameterTypes, Modifiers modifiers, MemberFlags flags)
 			: base(declaringType, name, sig, method, returnType, parameterTypes, modifiers, flags)
@@ -1117,22 +1120,14 @@ namespace IKVM.Internal
 			this.ghostMethod = ghostMethod;
 		}
 
-		private void ResolveGhostMethod()
+#if EMITTERS
+		protected override void CallImpl(CodeEmitter ilgen)
 		{
-			if (ghostMethod == null)
-			{
-				ghostMethod = DeclaringType.TypeAsSignatureType.GetMethod(this.Name, this.GetParametersForDefineMethod());
-				if (ghostMethod == null)
-				{
-					throw new InvalidOperationException("Unable to resolve ghost method");
-				}
-			}
+			ilgen.Emit(OpCodes.Call, defaultImpl);
 		}
 
-#if EMITTERS
 		protected override void CallvirtImpl(CodeEmitter ilgen)
 		{
-			ResolveGhostMethod();
 			ilgen.Emit(OpCodes.Call, ghostMethod);
 		}
 #endif
@@ -1141,8 +1136,29 @@ namespace IKVM.Internal
 		[HideFromJava]
 		internal override object Invoke(object obj, object[] args)
 		{
-			ResolveGhostMethod();
 			return InvokeAndUnwrapException(ghostMethod, DeclaringType.GhostWrap(obj), args);
+		}
+#endif
+
+		internal void SetDefaultImpl(MethodInfo impl)
+		{
+			this.defaultImpl = impl;
+		}
+
+		internal MethodInfo GetDefaultImpl()
+		{
+			return defaultImpl;
+		}
+
+#if STATIC_COMPILER
+		internal void SetGhostMethod(MethodBuilder mb)
+		{
+			this.ghostMethod = mb;
+		}
+
+		internal MethodBuilder GetGhostMethod()
+		{
+			return (MethodBuilder)ghostMethod;
 		}
 #endif
 	}
@@ -1191,6 +1207,75 @@ namespace IKVM.Internal
 		protected override void NewobjImpl(CodeEmitter ilgen)
 		{
 			ilgen.Emit(OpCodes.Newobj, stub);
+		}
+#endif // EMITTERS
+	}
+
+	sealed class DefaultInterfaceMethodWrapper : SmartMethodWrapper
+	{
+		private MethodInfo impl;
+
+		internal DefaultInterfaceMethodWrapper(TypeWrapper declaringType, string name, string sig, MethodInfo ifmethod, MethodInfo impl, TypeWrapper returnType, TypeWrapper[] parameterTypes, Modifiers modifiers, MemberFlags flags)
+			: base(declaringType, name, sig, ifmethod, returnType, parameterTypes, modifiers, flags)
+		{
+			this.impl = impl;
+		}
+
+		internal static MethodInfo GetImpl(MethodWrapper mw)
+		{
+			DefaultInterfaceMethodWrapper dimw = mw as DefaultInterfaceMethodWrapper;
+			if (dimw != null)
+			{
+				return dimw.impl;
+			}
+			else
+			{
+				return ((GhostMethodWrapper)mw).GetDefaultImpl();
+			}
+		}
+
+		internal static void SetImpl(MethodWrapper mw, MethodInfo impl)
+		{
+			DefaultInterfaceMethodWrapper dimw = mw as DefaultInterfaceMethodWrapper;
+			if (dimw != null)
+			{
+				dimw.impl = impl;
+			}
+			else
+			{
+				((GhostMethodWrapper)mw).SetDefaultImpl(impl);
+			}
+		}
+
+#if EMITTERS
+		protected override void CallImpl(CodeEmitter ilgen)
+		{
+			ilgen.Emit(OpCodes.Call, impl);
+		}
+
+		protected override void CallvirtImpl(CodeEmitter ilgen)
+		{
+			ilgen.Emit(OpCodes.Callvirt, GetMethod());
+		}
+#endif // EMITTERS
+	}
+
+	sealed class PrivateInterfaceMethodWrapper : SmartMethodWrapper
+	{
+		internal PrivateInterfaceMethodWrapper(TypeWrapper declaringType, string name, string sig, MethodBase method, TypeWrapper returnType, TypeWrapper[] parameterTypes, Modifiers modifiers, MemberFlags flags)
+			: base(declaringType, name, sig, method, returnType, parameterTypes, modifiers, flags)
+		{
+		}
+
+#if EMITTERS
+		protected override void CallImpl(CodeEmitter ilgen)
+		{
+			ilgen.Emit(OpCodes.Call, GetMethod());
+		}
+
+		protected override void CallvirtImpl(CodeEmitter ilgen)
+		{
+			ilgen.Emit(OpCodes.Call, GetMethod());
 		}
 #endif // EMITTERS
 	}
