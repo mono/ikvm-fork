@@ -112,7 +112,9 @@ namespace IKVM.Reflection.Emit
 		private readonly List<int> labels = new List<int>();
 		private readonly List<int> labelStackHeight = new List<int>();
 		private readonly List<LabelFixup> labelFixups = new List<LabelFixup>();
+#if !NO_SYMBOL_WRITER
 		private readonly List<SequencePoint> sequencePoints = new List<SequencePoint>();
+#endif
 		private readonly List<ExceptionBlock> exceptions = new List<ExceptionBlock>();
 		private readonly Stack<ExceptionBlock> exceptionStack = new Stack<ExceptionBlock>();
 		private ushort maxStack;
