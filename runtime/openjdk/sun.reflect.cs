@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2007-2013 Jeroen Frijters
+  Copyright (C) 2007-2014 Jeroen Frijters
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -32,6 +32,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using System.Security;
 using IKVM.Internal;
+using IKVM.Attributes;
 
 namespace IKVM.Internal
 {
@@ -42,48 +43,41 @@ namespace IKVM.Internal
 		java.lang.IllegalArgumentException SetIllegalArgumentException(object obj);
 	}
 #endif
-
-	sealed class State
-	{
-		internal int Value;
-	}
 }
 
 static class Java_sun_reflect_Reflection
 {
 #if CLASSGC
+	sealed class State
+	{
+		internal HideFromJavaFlags Value;
+		internal volatile bool HasValue;
+	}
+
 	private static readonly ConditionalWeakTable<MethodBase, State> isHideFromJavaCache = new ConditionalWeakTable<MethodBase, State>();
 
-	internal static bool IsHideFromJava(MethodBase mb)
-	{
-		State state = isHideFromJavaCache.GetValue(mb, delegate { return new State(); });
-		if (state.Value == 0)
-		{
-			state.Value = IsHideFromJavaImpl(mb);
-		}
-		return state.Value == 1;
-	}
-
-	private static int IsHideFromJavaImpl(MethodBase mb)
+	internal static HideFromJavaFlags GetHideFromJavaFlags(MethodBase mb)
 	{
 		if (mb.Name.StartsWith("__<", StringComparison.Ordinal))
 		{
-			return 1;
+			return HideFromJavaFlags.All;
 		}
-		if (mb.IsDefined(typeof(IKVM.Attributes.HideFromJavaAttribute), false) || mb.IsDefined(typeof(IKVM.Attributes.HideFromReflectionAttribute), false))
+		State state = isHideFromJavaCache.GetValue(mb, delegate { return new State(); });
+		if (!state.HasValue)
 		{
-			return 1;
+			state.Value = AttributeHelper.GetHideFromJavaFlags(mb);
+			state.HasValue = true;
 		}
-		return 2;
+		return state.Value;
 	}
 #else
-	private static readonly Dictionary<RuntimeMethodHandle, bool> isHideFromJavaCache = new Dictionary<RuntimeMethodHandle, bool>();
+	private static readonly Dictionary<RuntimeMethodHandle, HideFromJavaFlags> isHideFromJavaCache = new Dictionary<RuntimeMethodHandle, HideFromJavaFlags>();
 
-	internal static bool IsHideFromJava(MethodBase mb)
+	internal static HideFromJavaFlags GetHideFromJavaFlags(MethodBase mb)
 	{
 		if (mb.Name.StartsWith("__<", StringComparison.Ordinal))
 		{
-			return true;
+			return HideFromJavaFlags.All;
 		}
 		RuntimeMethodHandle handle;
 		try
@@ -93,33 +87,55 @@ static class Java_sun_reflect_Reflection
 		catch (InvalidOperationException)
 		{
 			// DynamicMethods don't have a RuntimeMethodHandle and we always want to hide them anyway
-			return true;
+			return HideFromJavaFlags.All;
 		}
 		catch (NotSupportedException)
 		{
 			// DynamicMethods don't have a RuntimeMethodHandle and we always want to hide them anyway
-			return true;
+			return HideFromJavaFlags.All;
 		}
 		lock (isHideFromJavaCache)
 		{
-			bool cached;
+			HideFromJavaFlags cached;
 			if (isHideFromJavaCache.TryGetValue(handle, out cached))
 			{
 				return cached;
 			}
 		}
-		bool isHide = mb.IsDefined(typeof(IKVM.Attributes.HideFromJavaAttribute), false) || mb.IsDefined(typeof(IKVM.Attributes.HideFromReflectionAttribute), false);
+		HideFromJavaFlags flags = AttributeHelper.GetHideFromJavaFlags(mb);
 		lock (isHideFromJavaCache)
 		{
-			isHideFromJavaCache[handle] = isHide;
+			isHideFromJavaCache[handle] = flags;
 		}
-		return isHide;
+		return flags;
 	}
 #endif
 
+	internal static bool IsHideFromStackWalk(MethodBase mb)
+	{
+		Type type = mb.DeclaringType;
+		return type == null
+			|| type.Assembly == typeof(object).Assembly
+			|| type.Assembly == typeof(Java_sun_reflect_Reflection).Assembly
+			|| type.Assembly == Java_java_lang_SecurityManager.jniAssembly
+			|| type == typeof(java.lang.reflect.Method)
+			|| type == typeof(java.lang.reflect.Constructor)
+			|| (GetHideFromJavaFlags(mb) & HideFromJavaFlags.StackWalk) != 0
+			;
+	}
+
+	public static java.lang.Class getCallerClass()
+	{
+#if FIRST_PASS
+		return null;
+#else
+		throw new java.lang.InternalError("CallerSensitive annotation expected at frame 1");
+#endif
+	}
+
 	// NOTE this method is hooked up explicitly through map.xml to prevent inlining of the native stub
 	// and tail-call optimization in the native stub.
-	public static object getCallerClass(int realFramesToSkip)
+	public static java.lang.Class getCallerClass(int realFramesToSkip)
 	{
 #if FIRST_PASS
 		return null;
@@ -138,21 +154,13 @@ static class Java_sun_reflect_Reflection
 			{
 				return null;
 			}
-			Type type = method.DeclaringType;
-			// NOTE these checks should be the same as the ones in SecurityManager.getClassContext
-			if (IsHideFromJava(method)
-				|| type == null
-				|| type.Assembly == typeof(object).Assembly
-				|| type.Assembly == typeof(Java_sun_reflect_Reflection).Assembly
-				|| type.Assembly == Java_java_lang_SecurityManager.jniAssembly
-				|| type == typeof(java.lang.reflect.Method)
-				|| type == typeof(java.lang.reflect.Constructor))
+			if (IsHideFromStackWalk(method))
 			{
 				continue;
 			}
 			if (--realFramesToSkip == 0)
 			{
-				return ClassLoaderWrapper.GetWrapperFromType(type).ClassObject;
+				return ClassLoaderWrapper.GetWrapperFromType(method.DeclaringType).ClassObject;
 			}
 		}
 #endif
@@ -368,7 +376,7 @@ static class Java_sun_reflect_ReflectionFactory
 		internal SerializationConstructorAccessorImpl(java.lang.reflect.Constructor constructorToCall, java.lang.Class classToInstantiate)
 		{
 			this.type = TypeWrapper.FromClass(classToInstantiate).TypeAsBaseType;
-			MethodWrapper mw = MethodWrapper.FromConstructor(constructorToCall);
+			MethodWrapper mw = MethodWrapper.FromExecutable(constructorToCall);
 			if (mw.DeclaringType != CoreClasses.java.lang.Object.Wrapper)
 			{
 				this.mw = mw;
@@ -804,7 +812,7 @@ static class Java_sun_reflect_ReflectionFactory
 
 		internal FastConstructorAccessorImpl(java.lang.reflect.Constructor constructor)
 		{
-			MethodWrapper mw = MethodWrapper.FromConstructor(constructor);
+			MethodWrapper mw = MethodWrapper.FromExecutable(constructor);
 			TypeWrapper[] parameters;
 			try
 			{
@@ -925,7 +933,7 @@ static class Java_sun_reflect_ReflectionFactory
 
 		internal FastSerializationConstructorAccessorImpl(java.lang.reflect.Constructor constructorToCall, java.lang.Class classToInstantiate)
 		{
-			MethodWrapper constructor = MethodWrapper.FromConstructor(constructorToCall);
+			MethodWrapper constructor = MethodWrapper.FromExecutable(constructorToCall);
 			if (constructor.GetParameters().Length != 0)
 			{
 				throw new NotImplementedException("Serialization constructor cannot have parameters");
@@ -1028,10 +1036,10 @@ static class Java_sun_reflect_ReflectionFactory
 			}
 		}
 
-		private FieldAccessorImplBase(FieldWrapper fw, bool overrideAccessCheck)
+		private FieldAccessorImplBase(FieldWrapper fw, bool isFinal)
 		{
 			this.fw = fw;
-			isFinal = (!overrideAccessCheck || fw.IsStatic) && fw.IsFinal;
+			this.isFinal = isFinal;
 		}
 
 		private string GetQualifiedFieldName()
@@ -1041,7 +1049,9 @@ static class Java_sun_reflect_ReflectionFactory
 
 		private string GetFieldTypeName()
 		{
-			return fw.FieldTypeWrapper.ClassObject.getName();
+			return fw.FieldTypeWrapper.IsPrimitive
+				? fw.FieldTypeWrapper.ClassObject.getName()
+				: fw.FieldTypeWrapper.Name;
 		}
 
 		public java.lang.IllegalArgumentException GetIllegalArgumentException(object obj)
@@ -1191,8 +1201,8 @@ static class Java_sun_reflect_ReflectionFactory
 			protected Setter setter = initialSetter;
 			protected Getter getter = initialGetter;
 
-			internal FieldAccessor(FieldWrapper fw, bool overrideAccessCheck)
-				: base(fw, overrideAccessCheck)
+			internal FieldAccessor(FieldWrapper fw, bool isFinal)
+				: base(fw, isFinal)
 			{
 				if (!IsSlowPathCompatible(fw))
 				{
@@ -1321,8 +1331,8 @@ static class Java_sun_reflect_ReflectionFactory
 
 		private sealed class ByteField : FieldAccessor<byte>
 		{
-			internal ByteField(FieldWrapper field, bool overrideAccessCheck)
-				: base(field, overrideAccessCheck)
+			internal ByteField(FieldWrapper field, bool isFinal)
+				: base(field, isFinal)
 			{
 			}
 
@@ -1397,8 +1407,8 @@ static class Java_sun_reflect_ReflectionFactory
 
 		private sealed class BooleanField : FieldAccessor<bool>
 		{
-			internal BooleanField(FieldWrapper field, bool overrideAccessCheck)
-				: base(field, overrideAccessCheck)
+			internal BooleanField(FieldWrapper field, bool isFinal)
+				: base(field, isFinal)
 			{
 			}
 
@@ -1448,8 +1458,8 @@ static class Java_sun_reflect_ReflectionFactory
 
 		private sealed class CharField : FieldAccessor<char>
 		{
-			internal CharField(FieldWrapper field, bool overrideAccessCheck)
-				: base(field, overrideAccessCheck)
+			internal CharField(FieldWrapper field, bool isFinal)
+				: base(field, isFinal)
 			{
 			}
 
@@ -1518,8 +1528,8 @@ static class Java_sun_reflect_ReflectionFactory
 
 		private sealed class ShortField : FieldAccessor<short>
 		{
-			internal ShortField(FieldWrapper field, bool overrideAccessCheck)
-				: base(field, overrideAccessCheck)
+			internal ShortField(FieldWrapper field, bool isFinal)
+				: base(field, isFinal)
 			{
 			}
 
@@ -1594,8 +1604,8 @@ static class Java_sun_reflect_ReflectionFactory
 
 		private sealed class IntField : FieldAccessor<int>
 		{
-			internal IntField(FieldWrapper field, bool overrideAccessCheck)
-				: base(field, overrideAccessCheck)
+			internal IntField(FieldWrapper field, bool isFinal)
+				: base(field, isFinal)
 			{
 			}
 
@@ -1678,8 +1688,8 @@ static class Java_sun_reflect_ReflectionFactory
 
 		private sealed class FloatField : FieldAccessor<float>
 		{
-			internal FloatField(FieldWrapper field, bool overrideAccessCheck)
-				: base(field, overrideAccessCheck)
+			internal FloatField(FieldWrapper field, bool isFinal)
+				: base(field, isFinal)
 			{
 			}
 
@@ -1764,8 +1774,8 @@ static class Java_sun_reflect_ReflectionFactory
 
 		private sealed class LongField : FieldAccessor<long>
 		{
-			internal LongField(FieldWrapper field, bool overrideAccessCheck)
-				: base(field, overrideAccessCheck)
+			internal LongField(FieldWrapper field, bool isFinal)
+				: base(field, isFinal)
 			{
 			}
 
@@ -1849,8 +1859,8 @@ static class Java_sun_reflect_ReflectionFactory
 
 		private sealed class DoubleField : FieldAccessor<double>
 		{
-			internal DoubleField(FieldWrapper field, bool overrideAccessCheck)
-				: base(field, overrideAccessCheck)
+			internal DoubleField(FieldWrapper field, bool isFinal)
+				: base(field, isFinal)
 			{
 			}
 
@@ -1936,8 +1946,8 @@ static class Java_sun_reflect_ReflectionFactory
 
 		private sealed class ObjectField : FieldAccessor<object>
 		{
-			internal ObjectField(FieldWrapper field, bool overrideAccessCheck)
-				: base(field, overrideAccessCheck)
+			internal ObjectField(FieldWrapper field, bool isFinal)
+				: base(field, isFinal)
 			{
 			}
 
@@ -2095,48 +2105,48 @@ static class Java_sun_reflect_ReflectionFactory
 		}
 #endif // !NO_REF_EMIT
 
-		internal static FieldAccessorImplBase Create(FieldWrapper field, bool overrideAccessCheck)
+		internal static FieldAccessorImplBase Create(FieldWrapper field, bool isFinal)
 		{
 			TypeWrapper type = field.FieldTypeWrapper;
 			if (type.IsPrimitive)
 			{
 				if (type == PrimitiveTypeWrapper.BYTE)
 				{
-					return new ByteField(field, overrideAccessCheck);
+					return new ByteField(field, isFinal);
 				}
 				if (type == PrimitiveTypeWrapper.BOOLEAN)
 				{
-					return new BooleanField(field, overrideAccessCheck);
+					return new BooleanField(field, isFinal);
 				}
 				if (type == PrimitiveTypeWrapper.CHAR)
 				{
-					return new CharField(field, overrideAccessCheck);
+					return new CharField(field, isFinal);
 				}
 				if (type == PrimitiveTypeWrapper.SHORT)
 				{
-					return new ShortField(field, overrideAccessCheck);
+					return new ShortField(field, isFinal);
 				}
 				if (type == PrimitiveTypeWrapper.INT)
 				{
-					return new IntField(field, overrideAccessCheck);
+					return new IntField(field, isFinal);
 				}
 				if (type == PrimitiveTypeWrapper.FLOAT)
 				{
-					return new FloatField(field, overrideAccessCheck);
+					return new FloatField(field, isFinal);
 				}
 				if (type == PrimitiveTypeWrapper.LONG)
 				{
-					return new LongField(field, overrideAccessCheck);
+					return new LongField(field, isFinal);
 				}
 				if (type == PrimitiveTypeWrapper.DOUBLE)
 				{
-					return new DoubleField(field, overrideAccessCheck);
+					return new DoubleField(field, isFinal);
 				}
 				throw new InvalidOperationException("field type: " + type);
 			}
 			else
 			{
-				return new ObjectField(field, overrideAccessCheck);
+				return new ObjectField(field, isFinal);
 			}
 		}
 	}
@@ -2147,14 +2157,18 @@ static class Java_sun_reflect_ReflectionFactory
 #if FIRST_PASS
 		return null;
 #else
-		return FieldAccessorImplBase.Create(FieldWrapper.FromField(field), overrideAccessCheck);
+		// we look at the modifiers of the Field object to allow Unsafe to give us a fake Field take doesn't have the final flag set
+		int modifiers = field.getModifiers();
+		bool isStatic = java.lang.reflect.Modifier.isStatic(modifiers);
+		bool isFinal = java.lang.reflect.Modifier.isFinal(modifiers);
+		return FieldAccessorImplBase.Create(FieldWrapper.FromField(field), isFinal && (!overrideAccessCheck || isStatic));
 #endif
 	}
 
 #if !FIRST_PASS
 	internal static sun.reflect.FieldAccessor NewFieldAccessorJNI(FieldWrapper field)
 	{
-		return FieldAccessorImplBase.Create(field, true);
+		return FieldAccessorImplBase.Create(field, false);
 	}
 #endif
 
@@ -2163,7 +2177,7 @@ static class Java_sun_reflect_ReflectionFactory
 #if FIRST_PASS
 		return null;
 #else
-		MethodWrapper mw = MethodWrapper.FromMethod(method);
+		MethodWrapper mw = MethodWrapper.FromExecutable(method);
 #if !NO_REF_EMIT
 		if (!mw.IsDynamicOnly)
 		{
@@ -2179,7 +2193,7 @@ static class Java_sun_reflect_ReflectionFactory
 #if FIRST_PASS
 		return null;
 #else
-		MethodWrapper mw = MethodWrapper.FromConstructor(constructor);
+		MethodWrapper mw = MethodWrapper.FromExecutable(constructor);
 		if (ActivatorConstructorAccessor.IsSuitable(mw))
 		{
 			// we special case public default constructors, because in that case using Activator.CreateInstance()
