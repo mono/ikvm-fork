@@ -571,8 +571,8 @@ namespace IKVM.Reflection.Emit
 			{
 				layout = (LayoutKind)val;
 			}
-			pack = (short)((int?)customBuilder.GetFieldValue("Pack") ?? 0);
-			size = (int?)customBuilder.GetFieldValue("Size") ?? 0;
+			pack = (short)((int?)customBuilder.GetFieldValue("Pack") ?? pack);
+			size = (int?)customBuilder.GetFieldValue("Size") ?? size;
 			CharSet charSet = customBuilder.GetFieldValue<CharSet>("CharSet") ?? CharSet.None;
 			attribs &= ~TypeAttributes.LayoutMask;
 			switch (layout)
