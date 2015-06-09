@@ -646,6 +646,10 @@ namespace IKVM.NativeCode.sun.nio.ch
 #if FIRST_PASS
 			return 0;
 #else
+			if (level == global::ikvm.@internal.Winsock.IPPROTO_IPV6 && opt == global::ikvm.@internal.Winsock.IPV6_TCLASS)
+			{
+				return 0;
+			}
 			System.Net.Sockets.SocketOptionLevel sol = (System.Net.Sockets.SocketOptionLevel)level;
 			System.Net.Sockets.SocketOptionName son = (System.Net.Sockets.SocketOptionName)opt;
 			try
@@ -678,9 +682,13 @@ namespace IKVM.NativeCode.sun.nio.ch
 #endif
 		}
 
-		public static void setIntOption0(FileDescriptor fd, bool mayNeedConversion, int level, int opt, int arg)
+		public static void setIntOption0(FileDescriptor fd, bool mayNeedConversion, int level, int opt, int arg, bool isIPv6)
 		{
 #if !FIRST_PASS
+			if (level == global::ikvm.@internal.Winsock.IPPROTO_IPV6 && opt == global::ikvm.@internal.Winsock.IPV6_TCLASS)
+			{
+				return;
+			}
 			System.Net.Sockets.SocketOptionLevel sol = (System.Net.Sockets.SocketOptionLevel)level;
 			System.Net.Sockets.SocketOptionName son = (System.Net.Sockets.SocketOptionName)opt;
 			if (mayNeedConversion)
@@ -998,8 +1006,7 @@ namespace IKVM.NativeCode.sun.nio.ch
 			{
 				if (useExclBind)
 				{
-					// TODO enable this after we merge OpenJDK 7u40
-					//global::java.net.net_util_md.setExclusiveBind(fd.getSocket());
+					global::java.net.net_util_md.setExclusiveBind(fd.getSocket());
 				}
 				fd.getSocket().Bind(new System.Net.IPEndPoint(global::java.net.SocketUtil.getAddressFromInetAddress(addr, preferIPv6), port));
 			}
@@ -1076,6 +1083,44 @@ namespace IKVM.NativeCode.sun.nio.ch
 			{
 				throw new global::java.net.SocketException("Socket is closed");
 			}
+#endif
+		}
+
+		public static int poll(FileDescriptor fd, int events, long timeout)
+		{
+#if FIRST_PASS
+			return 0;
+#else
+			System.Net.Sockets.SelectMode selectMode;
+			switch (events)
+			{
+				case global::sun.nio.ch.Net.POLLCONN:
+				case global::sun.nio.ch.Net.POLLOUT:
+					selectMode = System.Net.Sockets.SelectMode.SelectWrite;
+					break;
+				case global::sun.nio.ch.Net.POLLIN:
+					selectMode = System.Net.Sockets.SelectMode.SelectRead;
+					break;
+				default:
+					throw new NotSupportedException();
+			}
+			int microSeconds = timeout >= Int32.MaxValue / 1000 ? Int32.MaxValue : (int)(timeout * 1000);
+			try
+			{
+				if (fd.getSocket().Poll(microSeconds, selectMode))
+				{
+					return events;
+				}
+			}
+			catch (System.Net.Sockets.SocketException x)
+			{
+				throw new global::java.net.SocketException(x.Message);
+			}
+			catch (System.ObjectDisposedException)
+			{
+				throw new global::java.net.SocketException("Socket is closed");
+			}
+			return 0;
 #endif
 		}
 	}

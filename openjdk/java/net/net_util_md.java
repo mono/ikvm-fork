@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2008, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2013, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -317,6 +317,11 @@ final class net_util_md
     static int NET_GetSockOpt(cli.System.Net.Sockets.Socket s, int level, int optname, Object optval)
     {
         int rv;
+
+        if (level == IPPROTO_IPV6 && optname == IPV6_TCLASS) {
+            ((int[])optval)[0] = 0;
+            return 0;
+        }
 
         rv = getsockopt(s, level, optname, optval);
 
@@ -645,17 +650,17 @@ final class net_util_md
      * structure for an IPv4 InetAddress.
     */
     static int NET_InetAddressToSockaddr(JNIEnv env, InetAddress iaObj, int port, SOCKETADDRESS him, boolean v4MappedAddress) {
-        if (iaObj.family == InetAddress.IPv4) {
-            him.set(new IPEndPoint(new IPAddress(htonl(iaObj.address) & 0xFFFFFFFFL), port));
+        if (iaObj.holder().family == InetAddress.IPv4) {
+            him.set(new IPEndPoint(new IPAddress(htonl(iaObj.holder().address) & 0xFFFFFFFFL), port));
             return 0;
         } else {
             Inet6Address v6addr = (Inet6Address)iaObj;
             int scope = v6addr.getScopeId();
             if (scope == 0) {
-                him.set(new IPEndPoint(new IPAddress(v6addr.ipaddress), port));
+                him.set(new IPEndPoint(new IPAddress(v6addr.getAddress()), port));
                 return 0;
             } else {
-                him.set(new IPEndPoint(new IPAddress(v6addr.ipaddress, scope & 0xFFFFFFFFL), port));
+                him.set(new IPEndPoint(new IPAddress(v6addr.getAddress(), scope & 0xFFFFFFFFL), port));
                 return 0;
             }
         }
@@ -725,7 +730,7 @@ final class net_util_md
     }
 
     static boolean NET_SockaddrEqualsInetAddress(SOCKETADDRESS him, InetAddress iaObj) {
-        int family = iaObj.family == InetAddress.IPv4 ? AF_INET : AF_INET6;
+        int family = iaObj.holder().family == InetAddress.IPv4 ? AF_INET : AF_INET6;
 
         if (him.sa_family == AF_INET6) {
             byte[] caddrNew = him.him6.sin6_addr;
@@ -736,7 +741,7 @@ final class net_util_md
                         return false;
                     }
                     addrNew = NET_IPv4MappedToIPv4(caddrNew);
-                    addrCur = iaObj.address;
+                    addrCur = iaObj.holder().address;
                     if (addrNew == addrCur) {
                         return true;
                     } else {
@@ -750,7 +755,7 @@ final class net_util_md
                         return false;
                     }
                     scope = ((Inet6Address)iaObj).getScopeId();
-                    caddrCur = ((Inet6Address)iaObj).ipaddress;
+                    caddrCur = ((Inet6Address)iaObj).getAddress();
                     if (NET_IsEqual(caddrNew, caddrCur) && cmpScopeID(scope, him)) {
                         return true;
                     } else {
@@ -763,7 +768,7 @@ final class net_util_md
                 return false;
             }
             addrNew = ntohl(him.him4.sin_addr.s_addr);
-            addrCur = iaObj.address;
+            addrCur = iaObj.holder().address;
             if (addrNew == addrCur) {
                 return true;
             } else {
@@ -875,10 +880,10 @@ final class net_util_md
     }
 
     static int getInetAddress_addr(JNIEnv env, InetAddress iaObj) {
-        return iaObj.address;
+        return iaObj.holder().address;
     }
 
     static int getInetAddress_family(JNIEnv env, InetAddress iaObj) {
-        return iaObj.family;
+        return iaObj.holder().family;
     }
 }

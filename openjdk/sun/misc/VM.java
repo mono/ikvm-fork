@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1996, 2011, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1996, 2014, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -48,6 +48,7 @@ public class VM {
         return suspended;
     }
 
+    @SuppressWarnings("deprecation")
     public static boolean allowThreadSuspension(ThreadGroup g, boolean b) {
         return g.allowThreadSuspension(b);
     }
@@ -145,7 +146,9 @@ public class VM {
      */
     // public native static void writeJavaProfilerReport();
 
+
     private static volatile boolean booted = false;
+    private static final Object lock = new Object();
 
     static {
         // [IKVM] force System properties initialization ("booting")
@@ -163,11 +166,25 @@ public class VM {
     // the booted flag to determine whether it is safe to query the system
     // properties).
     public static void booted() {
-        booted = true;
+        synchronized (lock) {
+            booted = true;
+            lock.notifyAll();
+        }
     }
 
     public static boolean isBooted() {
         return booted;
+    }
+
+    // Waits until VM completes initialization
+    //
+    // This method is invoked by the Finalizer thread
+    public static void awaitBooted() throws InterruptedException {
+        synchronized (lock) {
+            while (!booted) {
+                lock.wait();
+            }
+        }
     }
 
     // Returns the maximum amount of allocatable direct buffer memory.
@@ -214,6 +231,14 @@ public class VM {
     //
     public static boolean allowArraySyntax() {
         return allowArraySyntax;
+    }
+
+    /**
+     * Returns true if the given class loader is in the system domain
+     * in which all permissions are granted.
+     */
+    public static boolean isSystemDomainLoader(ClassLoader loader) {
+        return loader == null;
     }
 
     /**
@@ -282,6 +307,9 @@ public class VM {
 
         // used by sun.launcher.LauncherHelper
         props.remove("sun.java.launcher.diag");
+
+        // used by sun.misc.URLClassPath
+        props.remove("sun.cds.enableSharedLookupCache");
     }
 
     // Initialize any miscellenous operating system settings that need to be
@@ -360,6 +388,12 @@ public class VM {
     private final static int JVMTI_THREAD_STATE_BLOCKED_ON_MONITOR_ENTER = 0x0400;
     private final static int JVMTI_THREAD_STATE_WAITING_INDEFINITELY = 0x0010;
     private final static int JVMTI_THREAD_STATE_WAITING_WITH_TIMEOUT = 0x0020;
+
+    /*
+     * Returns the first non-null class loader up the execution stack,
+     * or null if only code from the null class loader is on the stack.
+     */
+    public static native ClassLoader latestUserDefinedLoader();
 
     static {
         initialize();
