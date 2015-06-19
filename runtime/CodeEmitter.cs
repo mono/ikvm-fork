@@ -2376,11 +2376,15 @@ namespace IKVM.Internal
 					{
 						Console.Write(" label" + labelIndexes[code[i].Label]);
 					}
-					else if (code[i].opcode == OpCodes.Ldarg)
+					else if (code[i].opcode == OpCodes.Ldarg_S || code[i].opcode == OpCodes.Ldarga_S)
+					{
+						Console.Write(" " + code[i].ValueByte);
+					}
+					else if (code[i].opcode == OpCodes.Ldarg || code[i].opcode == OpCodes.Ldarga)
 					{
 						Console.Write(" " + code[i].ValueInt16);
 					}
-					else if (code[i].opcode == OpCodes.Isinst)
+					else if (code[i].opcode == OpCodes.Isinst || code[i].opcode == OpCodes.Castclass || code[i].opcode == OpCodes.Box || code[i].opcode == OpCodes.Unbox || code[i].opcode == OpCodes.Ldobj || code[i].opcode == OpCodes.Newarr)
 					{
 						Console.Write(" " + code[i].Type);
 					}
@@ -2388,11 +2392,27 @@ namespace IKVM.Internal
 					{
 						Console.Write(" " + code[i].MethodBase);
 					}
+					else if (code[i].opcode == OpCodes.Ldfld || code[i].opcode == OpCodes.Ldsfld || code[i].opcode == OpCodes.Stfld || code[i].opcode == OpCodes.Stsfld)
+					{
+						Console.Write(" " + code[i].FieldInfo);
+					}
+					else if (code[i].opcode == OpCodes.Ldc_I4)
+					{
+						Console.Write(" " + code[i].ValueInt32);
+					}
+					else if (code[i].opcode == OpCodes.Ldloc || code[i].opcode == OpCodes.Stloc)
+					{
+						Console.Write(" " + code[i].Local.__LocalIndex);
+					}
 					Console.WriteLine();
 				}
 				else if (code[i].pseudo == CodeType.Label)
 				{
 					Console.WriteLine("label{0}:  // temp = {1}", i, code[i].Label.Temp);
+				}
+				else if (code[i].pseudo == CodeType.DeclareLocal)
+				{
+					Console.WriteLine("local #{0} = {1}", code[i].Local.__LocalIndex, code[i].Local.LocalType);
 				}
 				else
 				{
