@@ -577,6 +577,7 @@ sealed class BootstrapBootstrapClassLoader : ClassLoaderWrapper
 		RegisterInitiatingLoader(new StubTypeWrapper(Modifiers.Public, "java.lang.Enum", javaLangObject, false));
 		RegisterInitiatingLoader(new StubTypeWrapper(Modifiers.Public | Modifiers.Abstract | Modifiers.Interface, "java.lang.annotation.Annotation", null, false));
 		RegisterInitiatingLoader(new StubTypeWrapper(Modifiers.Public | Modifiers.Final, "java.lang.Class", javaLangObject, false));
+		RegisterInitiatingLoader(new StubTypeWrapper(Modifiers.Public | Modifiers.Abstract, "java.lang.invoke.MethodHandle", javaLangObject, false));
 	}
 }
 
@@ -605,25 +606,6 @@ sealed class StubTypeWrapper : TypeWrapper
 	internal override Type TypeAsTBD
 	{
 		get { throw new NotSupportedException(); }
-	}
-
-	internal override TypeWrapper[] Interfaces
-	{
-		get { return TypeWrapper.EmptyArray; }
-	}
-
-	internal override TypeWrapper[] InnerClasses
-	{
-		get { return TypeWrapper.EmptyArray; }
-	}
-
-	internal override TypeWrapper DeclaringTypeWrapper
-	{
-		get { return null; }
-	}
-
-	internal override void Finish()
-	{
 	}
 
 	internal override bool IsRemapped
