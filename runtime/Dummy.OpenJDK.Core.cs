@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2010 Jeroen Frijters
+  Copyright (C) 2010-2014 Jeroen Frijters
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -53,10 +53,8 @@ namespace java
 
 		namespace invoke
 		{
-			public class MemberName { }
-			public class AdapterMethodHandle { }
-			public class BoundMethodHandle { }
 			public class DirectMethodHandle { }
+			public class MemberName { }
 			public class MethodType { }
 			public class MethodHandle { }
 			public class CallSite { }
@@ -64,8 +62,10 @@ namespace java
 
 		namespace reflect
 		{
-			public class Constructor { }
-			public class Method { }
+			public class Constructor : Executable { }
+			public class Executable { }
+			public class Field { }
+			public class Method : Executable { }
 		}
 	}
 
@@ -91,4 +91,11 @@ namespace java
 		public class Enumeration { }
 		public class Vector { }
 	}
+}
+
+namespace sun.reflect
+{
+	public interface ConstructorAccessor { }
+	public interface FieldAccessor { }
+	public interface MethodAccessor { }
 }
