@@ -52,6 +52,13 @@ namespace IKVM.Reflection.Reader
 		}
 	}
 
+	// FIXME: Put this somewhere else
+	class PdbStream {
+		public int EntryPoint { get; set; }
+		public ulong ReferencedTables { get; set; }
+		public int[] TableSizes { get; set; }
+	}
+
 	sealed class ModuleReader : Module
 	{
 		private readonly Stream stream;
@@ -78,6 +85,8 @@ namespace IKVM.Reflection.Reader
 		private Dictionary<int, string> strings = new Dictionary<int, string>();
 		private Dictionary<TypeName, Type> types = new Dictionary<TypeName, Type>();
 		private Dictionary<TypeName, LazyForwardedType> forwardedTypes = new Dictionary<TypeName, LazyForwardedType>();
+		private PdbStream pdbStream;
+		private bool isMetadataOnly;
 
 		private sealed class LazyForwardedType
 		{
@@ -126,10 +135,23 @@ namespace IKVM.Reflection.Reader
 		private void Read(Stream stream, bool mapped)
 		{
 			BinaryReader br = new BinaryReader(stream);
-			peFile.Read(br, mapped);
-			stream.Seek(peFile.RvaToFileOffset(peFile.GetComDescriptorVirtualAddress()), SeekOrigin.Begin);
-			cliHeader.Read(br);
-			stream.Seek(peFile.RvaToFileOffset(cliHeader.MetaData.VirtualAddress), SeekOrigin.Begin);
+
+			long pos = stream.Position;
+			uint header = br.ReadUInt32();
+			stream.Seek(pos, SeekOrigin.Begin);
+
+			if (header == 0x424a5342)
+			{
+				// Naked metadata file (enc/portable pdb)
+				this.isMetadataOnly = true;
+			}
+			else
+			{
+				peFile.Read(br, mapped);
+				stream.Seek(peFile.RvaToFileOffset(peFile.GetComDescriptorVirtualAddress()), SeekOrigin.Begin);
+				cliHeader.Read(br);
+				stream.Seek(peFile.RvaToFileOffset(cliHeader.MetaData.VirtualAddress), SeekOrigin.Begin);
+			}
 			foreach (StreamHeader sh in ReadStreamHeaders(br, out imageRuntimeVersion))
 			{
 				switch (sh.Name)
@@ -149,9 +171,26 @@ namespace IKVM.Reflection.Reader
 						break;
 					case "#~":
 					case "#-":
-						stream.Seek(peFile.RvaToFileOffset(cliHeader.MetaData.VirtualAddress + sh.Offset), SeekOrigin.Begin);
+						if (isMetadataOnly)
+						{
+							stream.Seek(sh.Offset, SeekOrigin.Begin);
+						}
+						else
+						{
+							stream.Seek(peFile.RvaToFileOffset(cliHeader.MetaData.VirtualAddress + sh.Offset), SeekOrigin.Begin);
+						}
 						ReadTables(br);
 						break;
+				case "#Pdb":
+					var entryPoint = br.ReadInt32 ();
+					var referencedTables = br.ReadUInt64 ();
+					var tableSizes = new int [64];
+					for (int i = 0; i < 64; ++i) {
+						if ((referencedTables & ((ulong)1 << i)) != 0)
+							tableSizes [i] = (int)br.ReadUInt32 ();
+					}
+					pdbStream = new PdbStream () { EntryPoint = entryPoint, ReferencedTables = referencedTables, TableSizes = tableSizes };
+					break;
 					default:
 						// we ignore unknown streams, because the CLR does so too
 						// (and some obfuscators add bogus streams)
@@ -204,6 +243,10 @@ namespace IKVM.Reflection.Reader
 			{
 				if ((Valid & (1UL << i)) != 0)
 				{
+					if (tables[i] == null)
+					{
+						throw new NotImplementedException ("Unknown table " + i);
+					}
 					tables[i].Sorted = (Sorted & (1UL << i)) != 0;
 					tables[i].RowCount = br.ReadInt32();
 				}
@@ -225,7 +268,14 @@ namespace IKVM.Reflection.Reader
 		private byte[] ReadHeap(Stream stream, uint offset, uint size)
 		{
 			byte[] buf = new byte[size];
-			stream.Seek(peFile.RvaToFileOffset(cliHeader.MetaData.VirtualAddress + offset), SeekOrigin.Begin);
+			if (isMetadataOnly)
+			{
+				stream.Seek(offset, SeekOrigin.Begin);
+			}
+			else
+			{
+				stream.Seek(peFile.RvaToFileOffset(cliHeader.MetaData.VirtualAddress + offset), SeekOrigin.Begin);
+			}
 			for (int pos = 0; pos < buf.Length; )
 			{
 				int read = stream.Read(buf, pos, buf.Length - pos);
@@ -347,6 +397,13 @@ namespace IKVM.Reflection.Reader
 		internal override ByteReader GetBlob(int blobIndex)
 		{
 			return ByteReader.FromBlob(blobHeap, blobIndex);
+		}
+
+		internal override Guid GetGuid(int guidIndex)
+		{
+			byte[] buf = new byte[16];
+			Buffer.BlockCopy(guidHeap, 16 * (guidIndex - 1), buf, 0, 16);
+			return new Guid(buf);
 		}
 
 		public override string ResolveString(int metadataToken)
@@ -1149,8 +1206,17 @@ namespace IKVM.Reflection.Reader
 			get { return metadataStreamVersion; }
 		}
 
+		public override bool __IsMetadataOnly
+		{
+			get { return isMetadataOnly; }
+		}
+
 		public override void __GetDataDirectoryEntry(int index, out int rva, out int length)
 		{
+			if (isMetadataOnly)
+			{
+				throw new NotSupportedException();
+			}
 			peFile.GetDataDirectoryEntry(index, out rva, out length);
 		}
 

@@ -2719,4 +2719,287 @@ namespace IKVM.Reflection.Metadata
 			Sort();
 		}
 	}
+
+	// Portable PDB
+	sealed class DocumentTable : Table<DocumentTable.Record>
+	{
+		internal const int Index = 0x30;
+
+		internal static Guid SHA1Guid = new Guid("ff1816ec-aa5e-4d10-87f7-6f4963833460");
+		internal static Guid CSharpGuid = new Guid("3f5162f8-07c6-11d3-9053-00c04fa302a1");
+
+		internal struct Record
+		{
+			internal int Name; // -> StringHeap
+			internal int HashAlgorithm; // -> GuidHeap
+			internal int Hash; // -> BlobHeap
+			internal int Language; // -> GuidHeap
+		}
+
+		internal override void Read(MetadataReader mr)
+		{
+			for (int i = 0; i < records.Length; i++)
+			{
+				records[i].Name = mr.ReadBlobIndex();
+				records[i].HashAlgorithm = mr.ReadGuidIndex();
+				records[i].Hash = mr.ReadBlobIndex();
+				records[i].Language = mr.ReadGuidIndex();
+			}
+		}
+
+		internal override void Write(MetadataWriter mw)
+		{
+			throw new NotImplementedException ();
+		}
+
+		protected override int GetRowSize(RowSizeCalc rsc)
+		{
+			return rsc
+				.WriteStringIndex()
+				.WriteGuidIndex()
+				.WriteBlobIndex()
+				.WriteGuidIndex()
+				.Value;
+		}
+	}
+
+	// Portable PDB
+	sealed class MethodDebugInformationTable : Table<MethodDebugInformationTable.Record>
+	{
+		internal const int Index = 0x31;
+
+		internal struct Record
+		{
+			internal int Document; // -> Document table
+			internal int SequencePoints; // -> BlobHeap
+		}
+
+		internal override void Read(MetadataReader mr)
+		{
+			for (int i = 0; i < records.Length; i++)
+			{
+				// FIXME: Token size
+				records[i].Document = mr.ReadInt16 ();
+				records[i].SequencePoints = mr.ReadBlobIndex();
+			}
+		}
+
+		internal override void Write(MetadataWriter mw)
+		{
+			throw new NotImplementedException ();
+		}
+
+		protected override int GetRowSize(RowSizeCalc rsc)
+		{
+			return rsc
+				.WriteBlobIndex()
+				.Value;
+		}
+	}
+
+	// Portable PDB
+	// FIXME: Sorted
+	sealed class LocalScopeTable : Table<LocalScopeTable.Record>
+	{
+		internal const int Index = 0x32;
+
+		internal struct Record
+		{
+			internal int Method;
+			internal int ImportScope;
+			internal int VariableList;
+			internal int ConstantList;
+			internal uint StartOffset;
+			internal uint Length;
+		}
+
+		internal override void Read(MetadataReader mr)
+		{
+			for (int i = 0; i < records.Length; i++)
+			{
+				// FIXME: Token sizes ?
+				records[i].Method = mr.ReadInt16();
+				records[i].ImportScope = mr.ReadInt16();
+				records[i].VariableList = mr.ReadInt16();
+				records[i].ConstantList = mr.ReadInt16();
+				records[i].StartOffset = (uint)mr.ReadInt32();
+				records[i].Length = (uint)mr.ReadInt32();
+			}
+		}
+
+		internal override void Write(MetadataWriter mw)
+		{
+			throw new NotImplementedException ();
+		}
+
+		protected override int GetRowSize(RowSizeCalc rsc)
+		{
+			throw new NotImplementedException();
+		}
+	}
+
+	// Portable PDB
+	sealed class LocalVariableTable : Table<LocalVariableTable.Record>
+	{
+		internal const int Index = 0x33;
+
+		internal enum LocalVariableAttributes {
+			DebuggerHidden = 0x1
+		}
+
+		internal struct Record
+		{
+			internal int Attributes;
+			internal int Index;
+			internal int Name; // -> StringHeap
+		}
+
+		internal override void Read(MetadataReader mr)
+		{
+			for (int i = 0; i < records.Length; i++)
+			{
+				records[i].Attributes = mr.ReadInt16();
+				records[i].Index = mr.ReadInt16();
+				records[i].Name = mr.ReadStringIndex();
+			}
+		}
+
+		internal override void Write(MetadataWriter mw)
+		{
+			throw new NotImplementedException ();
+		}
+
+		protected override int GetRowSize(RowSizeCalc rsc)
+		{
+			throw new NotImplementedException();
+		}
+	}
+
+	// Portable PDB
+	sealed class LocalConstantTable : Table<LocalConstantTable.Record>
+	{
+		internal const int Index = 0x34;
+
+		internal struct Record
+		{
+			internal int Name; // -> StringHeap
+			internal int Signature; // -> BlobHeap
+		}
+
+		internal override void Read(MetadataReader mr)
+		{
+			for (int i = 0; i < records.Length; i++)
+			{
+				records[i].Name = mr.ReadStringIndex();
+				records[i].Signature = mr.ReadBlobIndex();
+			}
+		}
+
+		internal override void Write(MetadataWriter mw)
+		{
+			throw new NotImplementedException ();
+		}
+
+		protected override int GetRowSize(RowSizeCalc rsc)
+		{
+			throw new NotImplementedException();
+		}
+	}
+
+	// Portable PDB
+	sealed class ImportScopeTable : Table<ImportScopeTable.Record>
+	{
+		internal const int Index = 0x35;
+
+		internal struct Record
+		{
+			internal int Parent;
+			internal int Imports; // -> BlobHeap
+		}
+
+		internal override void Read(MetadataReader mr)
+		{
+			for (int i = 0; i < records.Length; i++)
+			{
+				// FIXME: Token size
+				records[i].Parent = mr.ReadUInt16();
+				records[i].Imports = mr.ReadBlobIndex();
+			}
+		}
+
+		internal override void Write(MetadataWriter mw)
+		{
+			throw new NotImplementedException ();
+		}
+
+		protected override int GetRowSize(RowSizeCalc rsc)
+		{
+			throw new NotImplementedException();
+		}
+	}
+
+	// Portable PDB
+	sealed class StateMachineTable : Table<StateMachineTable.Record>
+	{
+		internal const int Index = 0x36;
+
+		internal struct Record
+		{
+			internal int MoveNextMethod;
+			internal int KickoffMethod;
+		}
+
+		internal override void Read(MetadataReader mr)
+		{
+			for (int i = 0; i < records.Length; i++)
+			{
+				records[i].MoveNextMethod = mr.ReadUInt16();
+				records[i].KickoffMethod = mr.ReadUInt16();
+			}
+		}
+
+		internal override void Write(MetadataWriter mw)
+		{
+			throw new NotImplementedException ();
+		}
+
+		protected override int GetRowSize(RowSizeCalc rsc)
+		{
+			throw new NotImplementedException();
+		}
+	}
+
+	// Portable PDB
+	sealed class CustomDebugInformationTable : Table<CustomDebugInformationTable.Record>
+	{
+		internal const int Index = 0x37;
+
+		internal struct Record
+		{
+			internal int Parent;
+			internal int Kind; // -> GuidHeap
+			internal int Value; // -> BlobHeap
+		}
+
+		internal override void Read(MetadataReader mr)
+		{
+			for (int i = 0; i < records.Length; i++)
+			{
+				// FIXME: Token size
+				records[i].Parent = mr.ReadUInt16();
+				records[i].Kind = mr.ReadBlobIndex();
+				records[i].Value = mr.ReadBlobIndex();
+			}
+		}
+
+		internal override void Write(MetadataWriter mw)
+		{
+			throw new NotImplementedException ();
+		}
+
+		protected override int GetRowSize(RowSizeCalc rsc)
+		{
+			throw new NotImplementedException();
+		}
+	}
 }

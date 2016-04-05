@@ -1532,6 +1532,11 @@ namespace IKVM.Reflection.Emit
 			return Blobs.GetBlob(blobIndex);
 		}
 
+		internal sealed override Guid GetGuid(int guidIndex)
+		{
+			throw new NotImplementedException();
+		}
+
 		internal int GetSignatureBlobIndex(Signature sig)
 		{
 			ByteBuffer bb = new ByteBuffer(16);
