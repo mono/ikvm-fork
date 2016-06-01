@@ -85,7 +85,6 @@ namespace IKVM.Reflection.Reader
 		private Dictionary<int, string> strings = new Dictionary<int, string>();
 		private Dictionary<TypeName, Type> types = new Dictionary<TypeName, Type>();
 		private Dictionary<TypeName, LazyForwardedType> forwardedTypes = new Dictionary<TypeName, LazyForwardedType>();
-		private PdbStream pdbStream;
 		private bool isMetadataOnly;
 
 		private sealed class LazyForwardedType
@@ -189,7 +188,7 @@ namespace IKVM.Reflection.Reader
 						if ((referencedTables & ((ulong)1 << i)) != 0)
 							tableSizes [i] = (int)br.ReadUInt32 ();
 					}
-					pdbStream = new PdbStream () { EntryPoint = entryPoint, ReferencedTables = referencedTables, TableSizes = tableSizes };
+					/*pdbStream =*/ new PdbStream () { EntryPoint = entryPoint, ReferencedTables = referencedTables, TableSizes = tableSizes };
 					break;
 					default:
 						// we ignore unknown streams, because the CLR does so too
