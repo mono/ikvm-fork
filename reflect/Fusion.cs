@@ -316,6 +316,7 @@ namespace IKVM.Reflection
 				case "System.IdentityModel":
 				case "System.IdentityModel.Selectors":
 				case "System.IO.Compression":
+				case "System.IO.Compression.FileSystem":
 				case "System.Numerics":
 				case "System.Reflection.Context":
 				case "System.Runtime.Remoting":
@@ -363,13 +364,18 @@ namespace IKVM.Reflection
 				case "System.Net.NetworkInformation":
 				case "System.Net.Primitives":
 				case "System.Net.Requests":
+				case "System.Numerics.Vectors":
 				case "System.ObjectModel":
 				case "System.Reflection":
+				case "System.Reflection.Emit":
+				case "System.Reflection.Emit.ILGeneration":
+				case "System.Reflection.Emit.Lightweight":
 				case "System.Reflection.Extensions":
 				case "System.Reflection.Primitives":
 				case "System.Resources.ResourceManager":
 				case "System.Runtime":
 				case "System.Runtime.Extensions":
+				case "System.Runtime.Handles":
 				case "System.Runtime.InteropServices":
 				case "System.Runtime.InteropServices.WindowsRuntime":
 				case "System.Runtime.Numerics":
@@ -391,6 +397,7 @@ namespace IKVM.Reflection
 				case "System.Threading":
 				case "System.Threading.Tasks":
 				case "System.Threading.Tasks.Parallel":
+				case "System.Threading.Timer":
 				case "System.Web":
 				case "System.Web.Mobile":
 				case "System.Web.Services":
