@@ -41,7 +41,8 @@ namespace IKVM.Reflection.Reader
 		{
 			this.module = module;
 			this.index = index;
-			this.typeName = module.GetString(module.TypeDef.records[index].TypeName);
+			// empty typeName is not allowed, but obfuscators...
+			this.typeName = module.GetString(module.TypeDef.records[index].TypeName) ?? "";
 			this.typeNamespace = module.GetString(module.TypeDef.records[index].TypeNamespace);
 			MarkKnownType(typeNamespace, typeName);
 		}
