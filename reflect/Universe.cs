@@ -758,7 +758,7 @@ namespace IKVM.Reflection
 			return null;
 		}
 
-		private Assembly DefaultResolver(string refname, bool throwOnError)
+		public Assembly DefaultResolver(string refname, bool throwOnError)
 		{
 			Assembly asm = GetDynamicAssembly(refname);
 			if (asm != null)
