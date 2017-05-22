@@ -567,7 +567,7 @@ namespace IKVM.Reflection.Emit
 		{
 			this.pack = (short)packingSize;
 			this.size = typesize;
-			this.hasLayout = true;
+			this.hasLayout = pack != 0 || size != 0;
 		}
 
 		private void SetStructLayoutPseudoCustomAttribute(CustomAttributeBuilder customBuilder)
