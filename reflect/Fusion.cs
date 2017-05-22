@@ -802,7 +802,7 @@ namespace IKVM.Reflection
 				publicKeyToken = null;
 				return false;
 			}
-			publicKeyToken = AssemblyName.ComputePublicKeyToken(str);
+			publicKeyToken = AssemblyName.ComputePublicKeyToken(str.Trim('"'));
 			return true;
 		}
 
