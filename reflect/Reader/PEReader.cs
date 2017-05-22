@@ -104,6 +104,8 @@ namespace IKVM.Reflection.Reader
 		public const WORD IMAGE_SUBSYSTEM_WINDOWS_GUI = 2;
 		public const WORD IMAGE_SUBSYSTEM_WINDOWS_CUI = 3;
 
+		public const WORD IMAGE_NUMBEROF_DIRECTORY_ENTRIES = 16;
+
 		public WORD Magic;
 		public BYTE MajorLinkerVersion;
 		public BYTE MinorLinkerVersion;
@@ -189,8 +191,8 @@ namespace IKVM.Reflection.Reader
 			}
 			LoaderFlags = br.ReadUInt32();
 			NumberOfRvaAndSizes = br.ReadUInt32();
-			DataDirectory = new IMAGE_DATA_DIRECTORY[NumberOfRvaAndSizes];
-			for (uint i = 0; i < NumberOfRvaAndSizes; i++)
+			DataDirectory = new IMAGE_DATA_DIRECTORY[IMAGE_NUMBEROF_DIRECTORY_ENTRIES];
+			for (uint i = 0; i < IMAGE_NUMBEROF_DIRECTORY_ENTRIES; i++)
 			{
 				DataDirectory[i] = new IMAGE_DATA_DIRECTORY();
 				DataDirectory[i].Read(br);
