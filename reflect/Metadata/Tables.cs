@@ -1244,6 +1244,8 @@ namespace IKVM.Reflection.Metadata
 					return (token & 0xFFFFFF) << 5 | 18;
 				case GenericParamTable.Index:
 					return (token & 0xFFFFFF) << 5 | 19;
+				case GenericParamConstraintTable.Index:
+					return (token & 0xFFFFFF) << 5 | 20;
 				default:
 					throw new InvalidOperationException();
 			}

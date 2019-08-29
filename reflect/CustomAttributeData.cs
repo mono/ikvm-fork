@@ -412,7 +412,7 @@ namespace IKVM.Reflection
 			}
 			else
 			{
-				throw new InvalidOperationException();
+				throw new InvalidOperationException(type.ToString());
 			}
 		}
 
