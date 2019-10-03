@@ -382,53 +382,55 @@ namespace IKVM.Reflection.Writer
 
 		private static void StrongName(Stream stream, StrongNameKeyPair keyPair, uint headerLength, uint textSectionFileOffset, uint strongNameSignatureFileOffset, uint strongNameSignatureLength)
 		{
-			SHA1Managed hash = new SHA1Managed();
-			using (CryptoStream cs = new CryptoStream(Stream.Null, hash, CryptoStreamMode.Write))
+			using (var hash = SHA1.Create())
 			{
-				stream.Seek(0, SeekOrigin.Begin);
-				byte[] buf = new byte[8192];
-				HashChunk(stream, cs, buf, (int)headerLength);
-				stream.Seek(textSectionFileOffset, SeekOrigin.Begin);
-				HashChunk(stream, cs, buf, (int)(strongNameSignatureFileOffset - textSectionFileOffset));
-				stream.Seek(strongNameSignatureLength, SeekOrigin.Current);
-				HashChunk(stream, cs, buf, (int)(stream.Length - (strongNameSignatureFileOffset + strongNameSignatureLength)));
-			}
-			using (RSA rsa = keyPair.CreateRSA())
-			{
-				RSAPKCS1SignatureFormatter sign = new RSAPKCS1SignatureFormatter(rsa);
-				byte[] signature = sign.CreateSignature(hash);
-				Array.Reverse(signature);
-				if (signature.Length != strongNameSignatureLength)
+				using (CryptoStream cs = new CryptoStream(Stream.Null, hash, CryptoStreamMode.Write))
 				{
-					throw new InvalidOperationException("Signature length mismatch");
+					stream.Seek(0, SeekOrigin.Begin);
+					byte[] buf = new byte[8192];
+					HashChunk(stream, cs, buf, (int)headerLength);
+					stream.Seek(textSectionFileOffset, SeekOrigin.Begin);
+					HashChunk(stream, cs, buf, (int)(strongNameSignatureFileOffset - textSectionFileOffset));
+					stream.Seek(strongNameSignatureLength, SeekOrigin.Current);
+					HashChunk(stream, cs, buf, (int)(stream.Length - (strongNameSignatureFileOffset + strongNameSignatureLength)));
 				}
-				stream.Seek(strongNameSignatureFileOffset, SeekOrigin.Begin);
-				stream.Write(signature, 0, signature.Length);
-			}
+				using (RSA rsa = keyPair.CreateRSA())
+				{
+					RSAPKCS1SignatureFormatter sign = new RSAPKCS1SignatureFormatter(rsa);
+					byte[] signature = sign.CreateSignature(hash);
+					Array.Reverse(signature);
+					if (signature.Length != strongNameSignatureLength)
+					{
+						throw new InvalidOperationException("Signature length mismatch");
+					}
+					stream.Seek(strongNameSignatureFileOffset, SeekOrigin.Begin);
+					stream.Write(signature, 0, signature.Length);
+				}
 
-			// compute the PE checksum
-			stream.Seek(0, SeekOrigin.Begin);
-			int count = (int)stream.Length / 4;
-			BinaryReader br = new BinaryReader(stream);
-			long sum = 0;
-			for (int i = 0; i < count; i++)
-			{
-				sum += br.ReadUInt32();
-				int carry = (int)(sum >> 32);
-				sum &= 0xFFFFFFFFU;
-				sum += carry;
-			}
-			while ((sum >> 16) != 0)
-			{
-				sum = (sum & 0xFFFF) + (sum >> 16);
-			}
-			sum += stream.Length;
+				// compute the PE checksum
+				stream.Seek(0, SeekOrigin.Begin);
+				int count = (int)stream.Length / 4;
+				BinaryReader br = new BinaryReader(stream);
+				long sum = 0;
+				for (int i = 0; i < count; i++)
+				{
+					sum += br.ReadUInt32();
+					int carry = (int)(sum >> 32);
+					sum &= 0xFFFFFFFFU;
+					sum += carry;
+				}
+				while ((sum >> 16) != 0)
+				{
+					sum = (sum & 0xFFFF) + (sum >> 16);
+				}
+				sum += stream.Length;
 
-			// write the PE checksum, note that it is always at offset 0xD8 in the file
-			ByteBuffer bb = new ByteBuffer(4);
-			bb.Write((int)sum);
-			stream.Seek(0xD8, SeekOrigin.Begin);
-			bb.WriteTo(stream);
+				// write the PE checksum, note that it is always at offset 0xD8 in the file
+				ByteBuffer bb = new ByteBuffer(4);
+				bb.Write((int)sum);
+				stream.Seek(0xD8, SeekOrigin.Begin);
+				bb.WriteTo(stream);
+			}
 		}
 
 		internal static void HashChunk(Stream stream, CryptoStream cs, byte[] buf, int length)
@@ -443,21 +445,23 @@ namespace IKVM.Reflection.Writer
 
 		private static Guid GenerateModuleVersionId(Stream stream)
 		{
-			SHA1Managed hash = new SHA1Managed();
-			using (CryptoStream cs = new CryptoStream(Stream.Null, hash, CryptoStreamMode.Write))
+			using (var hash = SHA1.Create())
 			{
-				stream.Seek(0, SeekOrigin.Begin);
-				byte[] buf = new byte[8192];
-				HashChunk(stream, cs, buf, (int)stream.Length);
+				using (CryptoStream cs = new CryptoStream(Stream.Null, hash, CryptoStreamMode.Write))
+				{
+					stream.Seek(0, SeekOrigin.Begin);
+					byte[] buf = new byte[8192];
+					HashChunk(stream, cs, buf, (int)stream.Length);
+				}
+				byte[] bytes = new byte[16];
+				Buffer.BlockCopy(hash.Hash, 0, bytes, 0, bytes.Length);
+				// set GUID type to "version 4" (random)
+				bytes[7] &= 0x0F;
+				bytes[7] |= 0x40;
+				bytes[8] &= 0x3F;
+				bytes[8] |= 0x80;
+				return new Guid(bytes);
 			}
-			byte[] bytes = new byte[16];
-			Buffer.BlockCopy(hash.Hash, 0, bytes, 0, bytes.Length);
-			// set GUID type to "version 4" (random)
-			bytes[7] &= 0x0F;
-			bytes[7] |= 0x40;
-			bytes[8] &= 0x3F;
-			bytes[8] |= 0x80;
-			return new Guid(bytes);
 		}
 	}
 }
