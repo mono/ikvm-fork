@@ -402,13 +402,16 @@ namespace IKVM.Reflection
 			{
 				return publicKey;
 			}
-			byte[] hash = new SHA1Managed().ComputeHash(publicKey);
-			byte[] token = new byte[8];
-			for (int i = 0; i < token.Length; i++)
+			using (var sha1 = SHA1.Create())
 			{
-				token[i] = hash[hash.Length - 1 - i];
+				byte[] hash = sha1.ComputeHash(publicKey);
+				byte[] token = new byte[8];
+				for (int i = 0; i < token.Length; i++)
+				{
+					token[i] = hash[hash.Length - 1 - i];
+				}
+				return token;
 			}
-			return token;
 		}
 
 		internal static string ComputePublicKeyToken(string publicKey)
