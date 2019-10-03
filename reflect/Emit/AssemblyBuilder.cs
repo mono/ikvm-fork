@@ -472,21 +472,23 @@ namespace IKVM.Reflection.Emit
 
 		private int AddFile(ModuleBuilder manifestModule, string fileName, int flags)
 		{
-			SHA1Managed hash = new SHA1Managed();
-			string fullPath = fileName;
-			if (dir != null)
+			using (var hash = SHA1.Create())
 			{
-				fullPath = Path.Combine(dir, fileName);
-			}
-			using (FileStream fs = new FileStream(fullPath, FileMode.Open, FileAccess.Read))
-			{
-				using (CryptoStream cs = new CryptoStream(Stream.Null, hash, CryptoStreamMode.Write))
+				string fullPath = fileName;
+				if (dir != null)
 				{
-					byte[] buf = new byte[8192];
-					ModuleWriter.HashChunk(fs, cs, buf, (int)fs.Length);
+					fullPath = Path.Combine(dir, fileName);
 				}
+				using (FileStream fs = new FileStream(fullPath, FileMode.Open, FileAccess.Read))
+				{
+					using (CryptoStream cs = new CryptoStream(Stream.Null, hash, CryptoStreamMode.Write))
+					{
+						byte[] buf = new byte[8192];
+						ModuleWriter.HashChunk(fs, cs, buf, (int)fs.Length);
+					}
+				}
+				return manifestModule.__AddModule(flags, Path.GetFileName(fileName), hash.Hash);
 			}
-			return manifestModule.__AddModule(flags, Path.GetFileName(fileName), hash.Hash);
 		}
 
 		public void AddResourceFile(string name, string fileName)
