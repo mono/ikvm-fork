@@ -1042,6 +1042,7 @@ namespace IKVM.Reflection
 		public ConstructorInfo GetConstructor(BindingFlags bindingAttr, Binder binder, Type[] types, ParameterModifier[] modifiers)
 		{
 			ConstructorInfo ci1 = null;
+			bindingAttr |= BindingFlags.DeclaredOnly;
 			if ((bindingAttr & BindingFlags.Instance) != 0)
 			{
 				ci1 = GetConstructorImpl(ConstructorInfo.ConstructorName, bindingAttr, binder, types, modifiers);
