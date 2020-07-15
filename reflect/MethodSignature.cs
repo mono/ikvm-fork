@@ -146,7 +146,7 @@ namespace IKVM.Reflection
 			System.Runtime.InteropServices.CallingConvention unmanagedCallingConvention = 0;
 			bool unmanaged;
 			byte flags = br.ReadByte();
-			switch (flags & 7)
+			switch (flags & 0xf)
 			{
 				case DEFAULT:
 					callingConvention = CallingConventions.Standard;
@@ -166,6 +166,10 @@ namespace IKVM.Reflection
 					break;
 				case 0x04:	// FASTCALL
 					unmanagedCallingConvention = System.Runtime.InteropServices.CallingConvention.FastCall;
+					unmanaged = true;
+					break;
+				case 0x09:	// UNMANAGED
+					unmanagedCallingConvention = (System.Runtime.InteropServices.CallingConvention)0x9;
 					unmanaged = true;
 					break;
 				case VARARG:
