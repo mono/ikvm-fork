@@ -451,18 +451,19 @@ namespace IKVM.Reflection.Metadata
 					return new Enumerator(records, table.RowCount - 1, -1, token);
 				}
 				int index = BinarySearch(records, table.RowCount, token & 0xFFFFFF);
+
 				if (index < 0)
 				{
 					return new Enumerator(null, 0, 1, -1);
 				}
 				int start = index;
-				while (start > 0 && (records[start - 1].FilterKey & 0xFFFFFF) == (token & 0xFFFFFF))
+				while (start > 0 && (((records [start - 1].FilterKey & 0xFFFFFF) == (token & 0xFFFFFF))) || ((records [start - 1].FilterKey & 0xFFFFFF) == 0))
 				{
 					start--;
 				}
 				int end = index;
 				int max = table.RowCount - 1;
-				while (end < max && (records[end + 1].FilterKey & 0xFFFFFF) == (token & 0xFFFFFF))
+				while (end < max && (((records [end + 1].FilterKey & 0xFFFFFF) == (token & 0xFFFFFF))) || ((records [end + 1].FilterKey & 0xFFFFFF) == 0))
 				{
 					end++;
 				}
@@ -480,6 +481,13 @@ namespace IKVM.Reflection.Metadata
 					if (maskedToken == maskedValue)
 					{
 						return mid;
+					}
+					else if (maskedValue == 0)
+					{
+						if (min > 0)
+							min--;
+						if (max < length - 1)
+							max++;
 					}
 					else if (maskedToken < maskedValue)
 					{
