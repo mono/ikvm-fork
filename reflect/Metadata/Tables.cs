@@ -458,14 +458,20 @@ namespace IKVM.Reflection.Metadata
 					return new Enumerator(null, 0, 1, -1);
 				}
 				int start = index;
-				while (start > 0 && (((records [start - 1].FilterKey & 0xFFFFFF) == maskedToken) || ((records [start - 1].FilterKey & 0xFFFFFF) == 0)))
+				while (start > 0)
 				{
+					var maskedFilterKey = records [start - 1].FilterKey & 0xFFFFFF;
+					if (maskedFilterKey != maskedToken && maskedFilterKey != 0)
+						break;
 					start--;
 				}
 				int end = index;
 				int max = table.RowCount - 1;
-				while (end < max && (((records [end + 1].FilterKey & 0xFFFFFF) == maskedToken) || ((records [end + 1].FilterKey & 0xFFFFFF) == 0)))
+				while (end < max)
 				{
+					var maskedFilterKey = records [end + 1].FilterKey & 0xFFFFFF;
+					if (maskedFilterKey != maskedToken && maskedFilterKey != 0)
+						break;
 					end++;
 				}
 				return new Enumerator(records, end, start - 1, token);
