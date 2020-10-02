@@ -450,20 +450,21 @@ namespace IKVM.Reflection.Metadata
 				{
 					return new Enumerator(records, table.RowCount - 1, -1, token);
 				}
-				int index = BinarySearch(records, table.RowCount, token & 0xFFFFFF);
+				var maskedToken = token & 0xFFFFFF;
+				int index = BinarySearch(records, table.RowCount, maskedToken);
 
 				if (index < 0)
 				{
 					return new Enumerator(null, 0, 1, -1);
 				}
 				int start = index;
-				while (start > 0 && (((records [start - 1].FilterKey & 0xFFFFFF) == (token & 0xFFFFFF)) || ((records [start - 1].FilterKey & 0xFFFFFF) == 0)))
+				while (start > 0 && (((records [start - 1].FilterKey & 0xFFFFFF) == maskedToken) || ((records [start - 1].FilterKey & 0xFFFFFF) == 0)))
 				{
 					start--;
 				}
 				int end = index;
 				int max = table.RowCount - 1;
-				while (end < max && (((records [end + 1].FilterKey & 0xFFFFFF) == (token & 0xFFFFFF)) || ((records [end + 1].FilterKey & 0xFFFFFF) == 0)))
+				while (end < max && (((records [end + 1].FilterKey & 0xFFFFFF) == maskedToken) || ((records [end + 1].FilterKey & 0xFFFFFF) == 0)))
 				{
 					end++;
 				}
